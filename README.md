@@ -1,0 +1,1 @@
+# Synak - file syncing between multiple hosts
