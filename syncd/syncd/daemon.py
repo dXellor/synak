@@ -12,6 +12,8 @@ class Daemon:
         self._config = config
         self._config_path = config_path
         self._shutdown_event: asyncio.Event | None = None
+        self._api: "ApiServer | None" = None  # type: ignore[name-defined]
+        self._manager: object | None = None
 
     async def run(self) -> None:
         self._shutdown_event = asyncio.Event()
@@ -28,10 +30,17 @@ class Daemon:
             logger.info("syncd stopped")
 
     async def _startup(self) -> None:
-        pass
+        from syncd.api.server import ApiServer
+        self._api = ApiServer(self._config.daemon.api_socket)
+        await self._api.start({
+            "daemon": self,
+            "config": self._config,
+            "manager": self._manager,
+        })
 
     async def _shutdown(self) -> None:
-        pass
+        if self._api is not None:
+            await self._api.stop()
 
     def _handle_sigterm(self) -> None:
         logger.info("SIGTERM received, shutting down")
