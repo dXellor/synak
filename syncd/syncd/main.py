@@ -40,3 +40,7 @@ def main() -> None:
 
     daemon = Daemon(config, config_path=args.config)
     asyncio.run(daemon.run())
+
+
+if __name__ == "__main__":
+    main()
