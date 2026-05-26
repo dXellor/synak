@@ -30,7 +30,13 @@ class Daemon:
             logger.info("syncd stopped")
 
     async def _startup(self) -> None:
+        import syncd.sync.providers  # noqa: F401 — triggers provider auto-registration
+        from syncd.sync.manager import SyncManager
         from syncd.api.server import ApiServer
+
+        self._manager = SyncManager()
+        await self._manager.start_all(self._config.pairs)
+
         self._api = ApiServer(self._config.daemon.api_socket)
         await self._api.start({
             "daemon": self,
@@ -41,6 +47,10 @@ class Daemon:
     async def _shutdown(self) -> None:
         if self._api is not None:
             await self._api.stop()
+        if self._manager is not None:
+            from syncd.sync.manager import SyncManager
+            if isinstance(self._manager, SyncManager):
+                await self._manager.stop_all()
 
     def _handle_sigterm(self) -> None:
         logger.info("SIGTERM received, shutting down")
