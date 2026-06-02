@@ -46,6 +46,10 @@ class P2PProvider(SyncProvider):
                 "type": "string",
                 "enum": ["last-write-wins", "keep-both"],
             },
+            "sync_deletes": {
+                "type": "boolean",
+                "description": "Whether to propagate remote deletions. Default true.",
+            },
         },
         "required": ["peers", "port"],
         "additionalProperties": False,
@@ -176,7 +180,20 @@ class P2PProvider(SyncProvider):
                 p: FileEntry.from_dict(e) for p, e in msg.get("index", {}).items()
             }
 
-            # Phase 1: pull files we need from peer
+            # Phase 1a: apply remote deletions (no network round-trip needed)
+            if self._context.provider_config.get("sync_deletes", True):
+                for path, remote_entry in remote_index.items():
+                    if not remote_entry.deleted:
+                        continue
+                    local_entry = self._index.get(path)
+                    if local_entry is None or local_entry.deleted:
+                        continue
+                    action = reconcile(local_entry, remote_entry, self._node_id)
+                    if action == Action.ACCEPT_REMOTE:
+                        await asyncio.to_thread(self._index.apply_remote, remote_entry, None)
+                        logger.info("Applied remote deletion of %r from peer %s", path, peer_addr)
+
+            # Phase 1b: pull files we need from peer
             needed = self._compute_needed(remote_index)
             for path in needed:
                 await proto.send_message(writer, proto.get_file_msg(path))
