@@ -1,113 +1,69 @@
-import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+"""Tests for the new protocol-based ClientServerProvider."""
 
+import asyncio
+import os
 import pytest
 
 from syncd.sync.base import SyncContext
 from syncd.sync.providers.client_server import ClientServerProvider
 
 
-def make_context(interval=60, direction="push") -> SyncContext:
+def make_context(tmp_path, mode="client", port=0, interval=60) -> SyncContext:
     return SyncContext(
         pair_id="test-pair",
-        local="/tmp/local",
-        direction=direction,
+        local=str(tmp_path),
+        direction="bidirectional",
         interval=interval,
-        provider_config={"remote": "user@host:/remote"},
+        provider_config={
+            "mode": mode,
+            "host": "127.0.0.1",
+            "port": port,
+        },
     )
-
-
-def make_proc(returncode=0, stderr=b""):
-    proc = MagicMock()
-    proc.returncode = returncode
-    proc.communicate = AsyncMock(return_value=(b"", stderr))
-    return proc
 
 
 # --- lifecycle ---
 
-async def test_start_creates_task():
+async def test_client_start_creates_task(tmp_path):
     p = ClientServerProvider()
-    ctx = make_context()
-    with patch("asyncio.create_subprocess_exec", return_value=make_proc()):
-        await p.start(ctx)
-        assert p._task is not None
-        assert p._state == "idle"
-        await p.stop()
-
-
-async def test_stop_cancels_task():
-    p = ClientServerProvider()
-    await p.start(make_context())
+    ctx = make_context(tmp_path, mode="client", port=19876)
+    await p.start(ctx)
+    assert p._task is not None
+    assert p._state == "idle"
     await p.stop()
     assert p._state == "stopped"
     assert p._task is None
 
 
-async def test_pause_clears_event():
+async def test_server_start_creates_server_and_task(tmp_path):
     p = ClientServerProvider()
-    await p.start(make_context())
+    ctx = make_context(tmp_path, mode="server", port=0)
+    # port=0 lets the OS pick a free port
+    ctx = SyncContext(
+        pair_id="test",
+        local=str(tmp_path),
+        direction="bidirectional",
+        interval=60,
+        provider_config={"mode": "server", "host": "127.0.0.1", "port": 0},
+    )
+    await p.start(ctx)
+    assert p._server is not None
+    assert p._task is not None
+    await p.stop()
+    assert p._server is None
+    assert p._task is None
+
+
+async def test_pause_and_resume(tmp_path):
+    p = ClientServerProvider()
+    await p.start(make_context(tmp_path, mode="client", port=19877))
     await p.pause()
     assert not p._paused.is_set()
     assert p._state == "paused"
-    await p.stop()
-
-
-async def test_resume_sets_event():
-    p = ClientServerProvider()
-    await p.start(make_context())
-    await p.pause()
     await p.resume()
     assert p._paused.is_set()
     assert p._state == "idle"
     await p.stop()
-
-
-# --- rsync success ---
-
-async def test_run_rsync_success_sets_idle():
-    p = ClientServerProvider()
-    p._context = make_context()
-    p._state = "idle"
-
-    with patch("asyncio.create_subprocess_exec", return_value=make_proc(returncode=0)):
-        await p._run_rsync()
-
-    assert p._state == "idle"
-    assert p._last_sync > 0
-    assert p._error == ""
-
-
-async def test_run_rsync_failure_sets_error():
-    p = ClientServerProvider()
-    p._context = make_context()
-    p._state = "idle"
-
-    with patch(
-        "asyncio.create_subprocess_exec",
-        return_value=make_proc(returncode=1, stderr=b"rsync: connection failed"),
-    ):
-        await p._run_rsync()
-
-    assert p._state == "error"
-    assert "connection failed" in p._error
-    assert p._last_sync == 0.0
-
-
-# --- status ---
-
-async def test_status_reflects_state():
-    p = ClientServerProvider()
-    p._context = make_context()
-    p._state = "idle"
-    p._last_sync = 1234.5
-    p._error = ""
-
-    s = await p.status()
-    assert s.pair_id == "test-pair"
-    assert s.state == "idle"
-    assert s.last_sync == 1234.5
-    assert s.error == ""
 
 
 async def test_status_before_start():
@@ -115,79 +71,136 @@ async def test_status_before_start():
     s = await p.status()
     assert s.pair_id == ""
     assert s.state == "stopped"
+    assert s.last_sync == 0.0
 
 
-# --- rsync args ---
-
-def test_build_rsync_args_push():
+async def test_status_after_start(tmp_path):
     p = ClientServerProvider()
-    ctx = make_context(direction="push")
-    args = p._build_rsync_args(ctx)
-    assert args[0] == "rsync"
-    assert "/tmp/local/" in args
-    assert "user@host:/remote" in args
-    assert args.index("/tmp/local/") < args.index("user@host:/remote")
+    ctx = make_context(tmp_path, mode="client", port=19878)
+    await p.start(ctx)
+    s = await p.status()
+    assert s.pair_id == "test-pair"
+    assert s.state in ("idle", "syncing", "error")
+    assert s.extra["mode"] == "client"
+    await p.stop()
 
 
-def test_build_rsync_args_pull():
+# --- index initialisation ---
+
+async def test_start_creates_synak_dir(tmp_path):
     p = ClientServerProvider()
-    ctx = make_context(direction="pull")
-    args = p._build_rsync_args(ctx)
-    assert "user@host:/remote/" in args
-    assert "/tmp/local" in args
-    assert args.index("user@host:/remote/") < args.index("/tmp/local")
+    ctx = make_context(tmp_path, mode="client", port=19879)
+    await p.start(ctx)
+    assert os.path.isdir(os.path.join(str(tmp_path), ".synak"))
+    await p.stop()
 
 
-def test_build_rsync_args_bidirectional_is_push():
+async def test_index_loaded_on_start(tmp_path):
+    # Create a file before starting — it should be indexed
+    (tmp_path / "hello.txt").write_bytes(b"hello")
     p = ClientServerProvider()
-    ctx = make_context(direction="bidirectional")
-    args = p._build_rsync_args(ctx)
-    # bidirectional falls back to push for now
-    assert "/tmp/local/" in args
-    assert "user@host:/remote" in args
+    ctx = make_context(tmp_path, mode="client", port=19880)
+    await p.start(ctx)
+    assert p._index is not None
+    entry = p._index.get("hello.txt")
+    assert entry is not None
+    assert not entry.deleted
+    await p.stop()
 
 
-def test_build_rsync_args_includes_base_flags():
+# --- end-to-end: server ↔ client sync ---
+
+async def test_client_pulls_file_from_server(tmp_path):
+    server_dir = tmp_path / "server"
+    client_dir = tmp_path / "client"
+    server_dir.mkdir()
+    client_dir.mkdir()
+
+    (server_dir / "shared.txt").write_bytes(b"hello from server")
+
+    server = ClientServerProvider()
+    srv_ctx = SyncContext(
+        pair_id="srv",
+        local=str(server_dir),
+        direction="bidirectional",
+        interval=9999,
+        provider_config={"mode": "server", "host": "127.0.0.1", "port": 0},
+    )
+    await server.start(srv_ctx)
+
+    # Find the actual bound port
+    bound_port = server._server.sockets[0].getsockname()[1]
+
+    client = ClientServerProvider()
+    cli_ctx = SyncContext(
+        pair_id="cli",
+        local=str(client_dir),
+        direction="bidirectional",
+        interval=9999,
+        provider_config={"mode": "client", "host": "127.0.0.1", "port": bound_port},
+    )
+    await client.start(cli_ctx)
+
+    # Trigger a sync and wait for it to complete
+    await client._run_client_session()
+    await asyncio.sleep(0.05)
+
+    assert (client_dir / "shared.txt").exists()
+    assert (client_dir / "shared.txt").read_bytes() == b"hello from server"
+
+    await client.stop()
+    await server.stop()
+
+
+async def test_client_pushes_file_to_server(tmp_path):
+    server_dir = tmp_path / "server"
+    client_dir = tmp_path / "client"
+    server_dir.mkdir()
+    client_dir.mkdir()
+
+    (client_dir / "from_client.txt").write_bytes(b"client data")
+
+    server = ClientServerProvider()
+    srv_ctx = SyncContext(
+        pair_id="srv",
+        local=str(server_dir),
+        direction="bidirectional",
+        interval=9999,
+        provider_config={"mode": "server", "host": "127.0.0.1", "port": 0},
+    )
+    await server.start(srv_ctx)
+    bound_port = server._server.sockets[0].getsockname()[1]
+
+    client = ClientServerProvider()
+    cli_ctx = SyncContext(
+        pair_id="cli",
+        local=str(client_dir),
+        direction="bidirectional",
+        interval=9999,
+        provider_config={"mode": "client", "host": "127.0.0.1", "port": bound_port},
+    )
+    await client.start(cli_ctx)
+    await client._run_client_session()
+    await asyncio.sleep(0.1)
+
+    assert (server_dir / "from_client.txt").exists()
+    assert (server_dir / "from_client.txt").read_bytes() == b"client data"
+
+    await client.stop()
+    await server.stop()
+
+
+async def test_connection_refused_sets_error_state(tmp_path):
     p = ClientServerProvider()
-    args = p._build_rsync_args(make_context())
-    assert "-az" in args
-    assert "--delete" in args
-
-
-# --- interval loop ---
-
-async def test_interval_loop_calls_rsync_then_sleeps():
-    p = ClientServerProvider()
-    p._context = make_context(interval=100)
-    p._state = "idle"
-
-    call_count = 0
-
-    async def fake_rsync():
-        nonlocal call_count
-        call_count += 1
-        p._state = "idle"
-
-    async def fake_sleep(n):
-        raise asyncio.CancelledError  # stop after first iteration
-
-    with patch.object(p, "_run_rsync", fake_rsync), \
-         patch("asyncio.sleep", fake_sleep):
-        with pytest.raises(asyncio.CancelledError):
-            await p._interval_loop()
-
-    assert call_count == 1
-
-
-# --- trigger ---
-
-async def test_trigger_creates_task():
-    p = ClientServerProvider()
-    p._context = make_context()
-    p._state = "idle"
-
-    with patch("asyncio.create_subprocess_exec", return_value=make_proc(returncode=0)):
-        await p.start(p._context)
-        await p.trigger()
-        await asyncio.sleep(0)  # let trigger task run
-        await p.stop()
+    ctx = SyncContext(
+        pair_id="cli",
+        local=str(tmp_path),
+        direction="bidirectional",
+        interval=9999,
+        provider_config={"mode": "client", "host": "127.0.0.1", "port": 19999},
+    )
+    await p.start(ctx)
+    await p._run_client_session()
+    assert p._state == "error"
+    assert "Cannot connect" in p._error
+    await p.stop()
