@@ -27,6 +27,8 @@ def reconcile(local: FileEntry, remote: FileEntry, node_id: str) -> Action:
     local_clock = local.get_clock(node_id)
     remote_clock = remote.get_clock(node_id)
 
+    if local_clock.equals(remote_clock):
+        return Action.KEEP_LOCAL  # same version on both sides
     if remote_clock.happens_before(local_clock):
         return Action.KEEP_LOCAL
     if local_clock.happens_before(remote_clock):

@@ -144,6 +144,7 @@ class FileIndex:
         if entry.deleted:
             if os.path.exists(abs_path):
                 os.remove(abs_path)
+            self._entries[entry.path] = entry
         else:
             parent = os.path.dirname(abs_path)
             if parent:
@@ -151,4 +152,12 @@ class FileIndex:
             if content is not None:
                 with open(abs_path, "wb") as f:
                     f.write(content)
-        self._entries[entry.path] = entry
+            # Record the actual mtime after writing so future scans don't rehash
+            actual_mtime = os.path.getmtime(abs_path) if os.path.exists(abs_path) else entry.modified_time
+            self._entries[entry.path] = FileEntry(
+                path=entry.path,
+                checksum=entry.checksum,
+                modified_time=actual_mtime,
+                vector_clock_data=entry.vector_clock_data,
+                deleted=entry.deleted,
+            )

@@ -31,9 +31,14 @@ class VectorClock:
                 at_least_one_less = True
         return at_least_one_less
 
+    def equals(self, other: VectorClock) -> bool:
+        """True if both clocks represent the exact same causal history."""
+        all_nodes = set(self._clock) | set(other._clock)
+        return all(self._clock.get(n, 0) == other._clock.get(n, 0) for n in all_nodes)
+
     def concurrent_with(self, other: VectorClock) -> bool:
         """True if neither happens-before the other — i.e. a conflict."""
-        return not self.happens_before(other) and not other.happens_before(self)
+        return not self.equals(other) and not self.happens_before(other) and not other.happens_before(self)
 
     def to_dict(self) -> dict[str, Any]:
         return {"node_id": self.node_id, "clock": dict(self._clock)}
