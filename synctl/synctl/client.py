@@ -10,6 +10,10 @@ class DaemonNotRunningError(Exception):
     pass
 
 
+class DaemonError(Exception):
+    pass
+
+
 class DaemonClient:
     def __init__(self, socket_path: str | None = None) -> None:
         self._socket = socket_path or DEFAULT_SOCKET.format(uid=os.getuid())
@@ -21,7 +25,7 @@ class DaemonClient:
                 transport=self._transport, base_url="http://syncd"
             ) as client:
                 resp = await client.get(path)
-                resp.raise_for_status()
+                _raise_for_status(resp)
                 return resp.json()
         except httpx.ConnectError as e:
             raise DaemonNotRunningError(
@@ -34,9 +38,19 @@ class DaemonClient:
                 transport=self._transport, base_url="http://syncd"
             ) as client:
                 resp = await client.post(path, json=body or {})
-                resp.raise_for_status()
+                _raise_for_status(resp)
                 return resp.json()
         except httpx.ConnectError as e:
             raise DaemonNotRunningError(
                 f"Cannot connect to syncd at {self._socket}"
             ) from e
+
+
+def _raise_for_status(resp: httpx.Response) -> None:
+    if resp.is_success:
+        return
+    try:
+        message = resp.json().get("error", resp.text)
+    except Exception:
+        message = resp.text
+    raise DaemonError(f"{resp.status_code}: {message}")

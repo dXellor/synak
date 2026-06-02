@@ -4,7 +4,7 @@ import sys
 
 import click
 
-from synctl.client import DaemonClient, DaemonNotRunningError
+from synctl.client import DaemonClient, DaemonError, DaemonNotRunningError
 
 
 @click.command("status")
@@ -13,7 +13,7 @@ def status_cmd(ctx: click.Context) -> None:
     """Show daemon status and active sync pairs."""
     try:
         data = asyncio.run(_get_status(ctx.obj["socket"]))
-    except DaemonNotRunningError as e:
+    except (DaemonNotRunningError, DaemonError) as e:
         click.echo(f"error: {e}", err=True)
         sys.exit(1)
 

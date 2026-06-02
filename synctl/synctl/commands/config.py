@@ -4,7 +4,7 @@ import sys
 
 import click
 
-from synctl.client import DaemonClient, DaemonNotRunningError
+from synctl.client import DaemonClient, DaemonError, DaemonNotRunningError
 
 
 @click.group("config")
@@ -20,6 +20,9 @@ def _run(coro):
     try:
         return asyncio.run(coro)
     except DaemonNotRunningError as e:
+        click.echo(f"error: {e}", err=True)
+        sys.exit(1)
+    except DaemonError as e:
         click.echo(f"error: {e}", err=True)
         sys.exit(1)
 
