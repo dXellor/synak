@@ -1,0 +1,16 @@
+[daemon]
+api_socket = "/tmp/syncd-demo-client.sock"
+log_level  = "debug"
+
+[[pairs]]
+id        = "demo"
+mode      = "client-server"
+local     = "~/sync-demo"
+direction = "bidirectional"
+interval  = 10
+
+[pairs.provider]
+mode    = "client"
+host    = "NODE_1_IP"
+port    = 5555
+node_id = "node_1_client"
