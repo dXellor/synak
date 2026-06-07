@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import fnmatch
 import hashlib
 import json
 import os
@@ -12,6 +13,21 @@ from syncd.sync.vector_clock import VectorClock
 
 METADATA_DIR = ".synak"
 INDEX_FILE = "index.json"
+
+_DEFAULT_EXCLUDES = {
+    "*.swp", "*.swpx", "*.swn",
+    ".DS_Store",     
+    "Thumbs.db",
+    "*.tmp", "*.temp",
+    "*~",
+}
+
+
+def _is_excluded(fname: str, rel_path: str, excludes: set[str]) -> bool:
+    return any(
+        fnmatch.fnmatch(fname, pat) or fnmatch.fnmatch(rel_path, pat)
+        for pat in excludes
+    )
 
 
 @dataclass
@@ -54,9 +70,10 @@ def _sha256(abs_path: str) -> str:
 
 
 class FileIndex:
-    def __init__(self, watch_dir: str, node_id: str) -> None:
+    def __init__(self, watch_dir: str, node_id: str, extra_excludes: list[str] | None = None) -> None:
         self._watch_dir = watch_dir
         self._node_id = node_id
+        self._excludes: set[str] = _DEFAULT_EXCLUDES | set(extra_excludes or [])
         self._entries: dict[str, FileEntry] = {}
         self._meta_dir = os.path.join(watch_dir, METADATA_DIR)
         self._index_path = os.path.join(self._meta_dir, INDEX_FILE)
@@ -84,6 +101,8 @@ class FileIndex:
             for fname in filenames:
                 abs_path = os.path.join(dirpath, fname)
                 rel_path = os.path.relpath(abs_path, self._watch_dir)
+                if _is_excluded(fname, rel_path, self._excludes):
+                    continue
                 seen.add(rel_path)
 
                 mtime = os.path.getmtime(abs_path)

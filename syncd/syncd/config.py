@@ -27,6 +27,7 @@ class PairConfig:
     direction: str
     interval: int
     provider: dict[str, Any]
+    exclude: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -74,6 +75,10 @@ def _parse_pair(raw: dict[str, Any], index: int) -> PairConfig:
         raise ConfigError(f"{ctx}: interval must be a non-negative integer")
 
     provider = dict(raw.get("provider", {}))
+    exclude_raw = raw.get("exclude", [])
+    if not isinstance(exclude_raw, list) or not all(isinstance(e, str) for e in exclude_raw):
+        raise ConfigError(f"{ctx}: exclude must be an array of strings")
+
     return PairConfig(
         id=raw["id"],
         mode=raw["mode"],
@@ -81,6 +86,7 @@ def _parse_pair(raw: dict[str, Any], index: int) -> PairConfig:
         direction=direction,
         interval=interval,
         provider=provider,
+        exclude=tuple(exclude_raw),
     )
 
 

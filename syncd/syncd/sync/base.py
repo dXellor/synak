@@ -10,6 +10,7 @@ class SyncContext:
     direction: str
     interval: int
     provider_config: dict[str, Any]
+    exclude: list[str] = field(default_factory=list)
 
 
 @dataclass

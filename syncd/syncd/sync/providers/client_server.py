@@ -76,7 +76,7 @@ class ClientServerProvider(SyncProvider):
         self._node_id = cfg.get("node_id") or str(uuid.uuid4())[:8]
         self._conflict_strategy = cfg.get("conflict_strategy", "last-write-wins")
 
-        self._index = FileIndex(context.local, self._node_id)
+        self._index = FileIndex(context.local, self._node_id, extra_excludes=context.exclude)
         await asyncio.to_thread(self._index.load)
         await asyncio.to_thread(self._index.scan)
         await asyncio.to_thread(self._index.save)

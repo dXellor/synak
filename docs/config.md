@@ -32,6 +32,7 @@ mode      = "client-server"   # required: "client-server" or "p2p"
 local     = "~/Documents/Work" # required, ~ is expanded
 direction = "bidirectional"   # required: "push", "pull", or "bidirectional"
 interval  = 300               # seconds between syncs; 0 = watch-based (default: 0)
+exclude   = ["*.log", "*.pdf", "build/*"]  # optional, fnmatch patterns
 
 [pairs.provider]
 # provider-specific fields — see below
@@ -44,6 +45,7 @@ interval  = 300               # seconds between syncs; 0 = watch-based (default:
 | `local` | yes | Local directory to sync |
 | `direction` | yes | `push` — send only; `pull` — receive only; `bidirectional` — both |
 | `interval` | no | Seconds between sync cycles. `0` uses filesystem watching (client-server only) |
+| `exclude` | no | List of fnmatch patterns to skip. Applied to filename and relative path. Stacks on top of built-in defaults. |
 
 ---
 
