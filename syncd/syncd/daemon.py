@@ -14,6 +14,7 @@ class Daemon:
         self._shutdown_event: asyncio.Event | None = None
         self._api: "ApiServer | None" = None  # type: ignore[name-defined]
         self._manager: object | None = None
+        self._app_state: dict = {}
 
     async def run(self) -> None:
         self._shutdown_event = asyncio.Event()
@@ -37,12 +38,13 @@ class Daemon:
         self._manager = SyncManager()
         await self._manager.start_all(self._config.pairs)
 
-        self._api = ApiServer(self._config.daemon.api_socket)
-        await self._api.start({
+        self._app_state = {
             "daemon": self,
             "config": self._config,
             "manager": self._manager,
-        })
+        }
+        self._api = ApiServer(self._config.daemon.api_socket)
+        await self._api.start(self._app_state)
 
     async def _shutdown(self) -> None:
         if self._api is not None:
@@ -67,7 +69,18 @@ class Daemon:
             logger.warning("No config path set, cannot reload")
             return
         try:
-            self._config = load_config(self._config_path)
-            logger.info("Config reloaded from %s", self._config_path)
+            new_config = load_config(self._config_path)
         except ConfigError as e:
             logger.error("Config reload failed: %s", e)
+            return
+
+        from syncd.sync.manager import SyncManager
+        if isinstance(self._manager, SyncManager):
+            await self._manager.stop_all()
+        self._manager = SyncManager()
+        await self._manager.start_all(new_config.pairs)
+
+        self._config = new_config
+        self._app_state["config"] = self._config
+        self._app_state["manager"] = self._manager
+        logger.info("Config reloaded from %s", self._config_path)
