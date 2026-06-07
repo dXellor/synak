@@ -3,6 +3,7 @@ import click
 from synctl.commands.status import status_cmd
 from synctl.commands.sync import sync_cmd
 from synctl.commands.config import config_cmd
+from synctl.commands.shutdown import shutdown_cmd
 
 
 @click.group()
@@ -29,6 +30,7 @@ def cli(ctx: click.Context, socket: str | None, output_json: bool) -> None:
 cli.add_command(status_cmd)
 cli.add_command(sync_cmd)
 cli.add_command(config_cmd)
+cli.add_command(shutdown_cmd)
 
 
 def main() -> None:
