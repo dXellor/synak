@@ -63,6 +63,7 @@ class ClientServerProvider(SyncProvider):
         self._last_sync: float = 0.0
         self._error: str = ""
         self._task: asyncio.Task | None = None
+        self._watch_task: asyncio.Task | None = None
         self._server: asyncio.Server | None = None
         self._paused = asyncio.Event()
         self._paused.set()
@@ -82,6 +83,9 @@ class ClientServerProvider(SyncProvider):
         await asyncio.to_thread(self._index.save)
 
         self._state = "idle"
+        self._watch_task = asyncio.create_task(
+            self._watch_loop(), name=f"cs-watch-{context.pair_id}"
+        )
         if cfg["mode"] == "server":
             bind_host = cfg.get("host", "0.0.0.0")
             port = cfg["port"]
@@ -107,13 +111,15 @@ class ClientServerProvider(SyncProvider):
             self._server.close()
             await self._server.wait_closed()
             self._server = None
-        if self._task is not None:
-            self._task.cancel()
-            try:
-                await self._task
-            except asyncio.CancelledError:
-                pass
-            self._task = None
+        for task in (self._task, self._watch_task):
+            if task is not None:
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+        self._task = None
+        self._watch_task = None
 
     async def pause(self) -> None:
         self._paused.clear()
@@ -138,6 +144,30 @@ class ClientServerProvider(SyncProvider):
             extra={"node_id": self._node_id, "mode": mode},
         )
 
+    # --- watch ---
+
+    async def _watch_loop(self) -> None:
+        from watchfiles import awatch, Change
+        from syncd.sync.file_index import METADATA_DIR
+        assert self._context is not None and self._index is not None
+        watch_dir = self._context.local
+        meta_prefix = os.path.join(watch_dir, METADATA_DIR) + os.sep
+        async for changes in awatch(watch_dir):
+            if self._index is None:
+                break
+            dirty = False
+            for change_type, path in changes:
+                if path.startswith(meta_prefix):
+                    continue
+                rel = os.path.relpath(path, watch_dir)
+                if change_type == Change.deleted:
+                    dirty |= self._index.mark_deleted(rel)
+                else:
+                    dirty |= self._index.scan_one(rel)
+            if dirty:
+                await asyncio.to_thread(self._index.save)
+                logger.debug("Watch: index updated for pair %r", self._context.pair_id)
+
     # --- server side ---
 
     async def _server_loop(self) -> None:
@@ -155,8 +185,6 @@ class ClientServerProvider(SyncProvider):
         peer = writer.get_extra_info("peername")
         logger.info("Client connected: %s", peer)
         try:
-            await asyncio.to_thread(self._index.scan)
-
             index_dict = {p: e.to_dict() for p, e in self._index.all_entries().items()}
             await proto.send_message(writer, proto.hello_msg(self._node_id, index_dict))
 
@@ -242,8 +270,6 @@ class ClientServerProvider(SyncProvider):
         self._state = "syncing"
         self._error = ""
         try:
-            await asyncio.to_thread(self._index.scan)
-
             host = ctx.provider_config.get("host", "127.0.0.1")
             port = ctx.provider_config["port"]
             reader, writer = await asyncio.open_connection(host, port)

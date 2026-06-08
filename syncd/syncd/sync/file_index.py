@@ -148,6 +148,49 @@ class FileIndex:
 
         return dirty
 
+    def scan_one(self, rel_path: str) -> bool:
+        """Reindex a single file. Returns True if the entry changed (dirty)."""
+        if _is_excluded(os.path.basename(rel_path), rel_path, self._excludes):
+            return False
+        abs_path = os.path.join(self._watch_dir, rel_path)
+        if not os.path.exists(abs_path) or os.path.isdir(abs_path):
+            return False
+        mtime = os.path.getmtime(abs_path)
+        existing = self._entries.get(rel_path)
+        if existing is not None and not existing.deleted and abs(mtime - existing.modified_time) <= 0.001:
+            return False
+        checksum = _sha256(abs_path)
+        if existing is not None and not existing.deleted and checksum == existing.checksum:
+            return False
+        if existing is None or existing.deleted:
+            clock = VectorClock(self._node_id)
+        else:
+            clock = existing.get_clock(self._node_id)
+        clock.increment()
+        self._entries[rel_path] = FileEntry(
+            path=rel_path,
+            checksum=checksum,
+            modified_time=mtime,
+            vector_clock_data=clock.to_dict(),
+        )
+        return True
+
+    def mark_deleted(self, rel_path: str) -> bool:
+        """Tombstone a path. Returns True if the entry changed (dirty)."""
+        existing = self._entries.get(rel_path)
+        if existing is None or existing.deleted:
+            return False
+        clock = existing.get_clock(self._node_id)
+        clock.increment()
+        self._entries[rel_path] = FileEntry(
+            path=rel_path,
+            checksum="",
+            modified_time=0.0,
+            vector_clock_data=clock.to_dict(),
+            deleted=True,
+        )
+        return True
+
     def get(self, path: str) -> FileEntry | None:
         return self._entries.get(path)
 
