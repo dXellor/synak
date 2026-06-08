@@ -74,6 +74,7 @@ class SyncManager:
             interval=pair.interval,
             provider_config=pair.provider,
             exclude=list(pair.exclude),
+            group=pair.group,
         )
         provider = provider_cls()
         await provider.start(context)

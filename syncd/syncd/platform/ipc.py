@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import os
 import sys
 from typing import TYPE_CHECKING
@@ -13,14 +12,13 @@ if TYPE_CHECKING:
     pass
 
 _IS_WINDOWS = sys.platform == "win32"
+_WINDOWS_IPC_PORT = 24017
 
 
 def default_socket_address() -> str:
     """Return the platform-appropriate default daemon listen address."""
     if _IS_WINDOWS:
-        username = os.environ.get("USERNAME", "syncd")
-        port = _port_from_string(username)
-        return f"127.0.0.1:{port}"
+        return f"127.0.0.1:{_WINDOWS_IPC_PORT}"
     return f"/run/user/{os.getuid()}/syncd.sock"
 
 
@@ -38,15 +36,9 @@ async def make_site(runner: web.AppRunner, address: str) -> web.BaseSite:
 
 
 def _parse_tcp(address: str) -> tuple[str, int]:
-    """Convert an address string to (host, port).
-
-    Accepts "host:port" directly, or derives a stable port from a Unix-style
-    path string so that Windows can use the same config file as Linux.
-    """
-    if ":" in address and not address.startswith("/"):
-        host, port_str = address.rsplit(":", 1)
-        return host, int(port_str)
-    return "127.0.0.1", _port_from_string(address)
+    """Convert a "host:port" string to (host, port)."""
+    host, port_str = address.rsplit(":", 1)
+    return host, int(port_str)
 
 
 def default_log_path(address: str) -> str:
@@ -61,6 +53,3 @@ def default_log_path(address: str) -> str:
     return os.path.join(tempfile.gettempdir(), "syncd.log")
 
 
-def _port_from_string(s: str) -> int:
-    """Derive a stable port in 49152-65535 from an arbitrary string."""
-    return 49152 + (int(hashlib.sha256(s.encode()).hexdigest(), 16) % 16383)

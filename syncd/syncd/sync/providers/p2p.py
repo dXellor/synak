@@ -16,6 +16,7 @@ Academic grounding:
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import os
 import time
@@ -30,6 +31,19 @@ from syncd.sync import protocol as proto
 logger = logging.getLogger(__name__)
 
 
+def _port_for_group(group: str) -> int:
+    """Derive a stable port in 30000-65535 from a group name."""
+    return 30000 + (int(hashlib.sha256(group.encode()).hexdigest(), 16) % 35536)
+
+
+def _parse_peer(peer: str, default_port: int) -> tuple[str, int]:
+    """Parse 'host' or 'host:port'. Bare hostnames use default_port."""
+    if ":" in peer:
+        host, port_str = peer.rsplit(":", 1)
+        return host, int(port_str)
+    return peer, default_port
+
+
 class P2PProvider(SyncProvider):
     NAME = "p2p"
     SCHEMA: dict[str, Any] = {
@@ -38,9 +52,12 @@ class P2PProvider(SyncProvider):
             "peers": {
                 "type": "array",
                 "items": {"type": "string"},
-                "description": "List of peer addresses as host:port",
+                "description": "Peer addresses as 'host' or 'host:port'. Port defaults to the group-derived port.",
             },
-            "port": {"type": "integer", "description": "TCP port this node listens on"},
+            "port": {
+                "type": "integer",
+                "description": "Explicit listen port. Overrides the group-derived port.",
+            },
             "node_id": {"type": "string"},
             "conflict_strategy": {
                 "type": "string",
@@ -51,7 +68,7 @@ class P2PProvider(SyncProvider):
                 "description": "Whether to propagate remote deletions. Default true.",
             },
         },
-        "required": ["peers", "port"],
+        "required": ["peers"],
         "additionalProperties": False,
     }
 
@@ -61,12 +78,14 @@ class P2PProvider(SyncProvider):
         self._last_sync: float = 0.0
         self._error: str = ""
         self._task: asyncio.Task | None = None
+        self._watch_task: asyncio.Task | None = None
         self._server: asyncio.Server | None = None
         self._paused = asyncio.Event()
         self._paused.set()
         self._index: FileIndex | None = None
         self._node_id: str = ""
         self._conflict_strategy: str = "last-write-wins"
+        self._port: int = 0
 
     async def start(self, context: SyncContext) -> None:
         self._context = context
@@ -79,15 +98,20 @@ class P2PProvider(SyncProvider):
         await asyncio.to_thread(self._index.scan)
         await asyncio.to_thread(self._index.save)
 
-        port: int = cfg["port"]
+        self._port = cfg.get("port") or _port_for_group(
+            context.group or context.pair_id
+        )
         self._server = await asyncio.start_server(
-            self._handle_connection, "0.0.0.0", port
+            self._handle_connection, "0.0.0.0", self._port
         )
         self._state = "idle"
         self._task = asyncio.create_task(
             self._sync_loop(), name=f"p2p-{context.pair_id}"
         )
-        logger.info("P2P node %r listening on port %d", self._node_id, port)
+        self._watch_task = asyncio.create_task(
+            self._watch_loop(), name=f"p2p-watch-{context.pair_id}"
+        )
+        logger.info("P2P node %r listening on port %d", self._node_id, self._port)
 
     async def stop(self) -> None:
         self._state = "stopped"
@@ -95,13 +119,15 @@ class P2PProvider(SyncProvider):
             self._server.close()
             await self._server.wait_closed()
             self._server = None
-        if self._task is not None:
-            self._task.cancel()
-            try:
-                await self._task
-            except asyncio.CancelledError:
-                pass
-            self._task = None
+        for task in (self._task, self._watch_task):
+            if task is not None:
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+        self._task = None
+        self._watch_task = None
 
     async def pause(self) -> None:
         self._paused.clear()
@@ -134,17 +160,34 @@ class P2PProvider(SyncProvider):
             await self._run_sync_round()
             await asyncio.sleep(interval)
 
+    async def _watch_loop(self) -> None:
+        from watchfiles import awatch, Change
+        from syncd.sync.file_index import METADATA_DIR
+        assert self._context is not None and self._index is not None
+        watch_dir = self._context.local
+        meta_prefix = os.path.join(watch_dir, METADATA_DIR) + os.sep
+        async for changes in awatch(watch_dir):
+            if self._index is None:
+                break
+            dirty = False
+            for change_type, path in changes:
+                if path.startswith(meta_prefix):
+                    continue
+                rel = os.path.relpath(path, watch_dir)
+                if change_type == Change.deleted:
+                    dirty |= self._index.mark_deleted(rel)
+                else:
+                    dirty |= self._index.scan_one(rel)
+            if dirty:
+                await asyncio.to_thread(self._index.save)
+                logger.debug("Watch: index updated for pair %r", self._context.pair_id)
+
     async def _run_sync_round(self) -> None:
         ctx = self._context
         assert ctx is not None and self._index is not None
         self._state = "syncing"
         self._error = ""
         try:
-            dirty = await asyncio.to_thread(self._index.scan)
-            if dirty:
-                await asyncio.to_thread(self._index.save)
-                logger.debug("Dirty set for pair %r: %s", ctx.pair_id, dirty)
-
             for peer_addr in ctx.provider_config.get("peers", []):
                 try:
                     await self._sync_with_peer(peer_addr)
@@ -167,8 +210,8 @@ class P2PProvider(SyncProvider):
 
     async def _sync_with_peer(self, peer_addr: str) -> None:
         assert self._index is not None
-        host, port_str = peer_addr.rsplit(":", 1)
-        reader, writer = await asyncio.open_connection(host, int(port_str))
+        host, port = _parse_peer(peer_addr, self._port)
+        reader, writer = await asyncio.open_connection(host, port)
         try:
             index_dict = {p: e.to_dict() for p, e in self._index.all_entries().items()}
             await proto.send_message(writer, proto.hello_msg(self._node_id, index_dict))
