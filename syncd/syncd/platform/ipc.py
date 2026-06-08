@@ -49,6 +49,18 @@ def _parse_tcp(address: str) -> tuple[str, int]:
     return "127.0.0.1", _port_from_string(address)
 
 
+def default_log_path(address: str) -> str:
+    """Derive a log file path from the daemon listen address.
+
+    Unix socket path → same path with .sock replaced by .log.
+    TCP address      → <tempdir>/syncd.log  (colons are invalid in Windows filenames).
+    """
+    if is_unix_socket_address(address):
+        return address.removesuffix(".sock") + ".log"
+    import tempfile
+    return os.path.join(tempfile.gettempdir(), "syncd.log")
+
+
 def _port_from_string(s: str) -> int:
     """Derive a stable port in 49152-65535 from an arbitrary string."""
     return 49152 + (int(hashlib.sha256(s.encode()).hexdigest(), 16) % 16383)

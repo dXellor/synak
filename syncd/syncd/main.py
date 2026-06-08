@@ -28,10 +28,6 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 
-def _default_log_path(socket_path: str) -> str:
-    return socket_path.removesuffix(".sock") + ".log"
-
-
 def main() -> None:
     args = build_parser().parse_args()
 
@@ -44,7 +40,8 @@ def main() -> None:
     if args.detach:
         from syncd.platform.process import daemonize, already_detached
         if not already_detached():
-            log_path = _default_log_path(config.daemon.api_socket)
+            from syncd.platform.ipc import default_log_path
+            log_path = default_log_path(config.daemon.api_socket)
             print(f"syncd: starting in background — logs: {log_path}")
             sys.stdout.flush()
             daemonize(log_path)
