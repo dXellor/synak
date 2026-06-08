@@ -15,7 +15,7 @@ METADATA_DIR = ".synak"
 INDEX_FILE = "index.json"
 
 _DEFAULT_EXCLUDES = {
-    "*.swp", "*.swpx", "*.swn",
+    "*.swp", "*-swp", "*.swpx", "*.swn",
     ".DS_Store",     
     "Thumbs.db",
     "*.tmp", "*.temp",
