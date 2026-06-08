@@ -162,10 +162,7 @@ class FileIndex:
         checksum = _sha256(abs_path)
         if existing is not None and not existing.deleted and checksum == existing.checksum:
             return False
-        if existing is None or existing.deleted:
-            clock = VectorClock(self._node_id)
-        else:
-            clock = existing.get_clock(self._node_id)
+        clock = existing.get_clock(self._node_id) if existing is not None else VectorClock(self._node_id)
         clock.increment()
         self._entries[rel_path] = FileEntry(
             path=rel_path,
@@ -177,6 +174,9 @@ class FileIndex:
 
     def mark_deleted(self, rel_path: str) -> bool:
         """Tombstone a path. Returns True if the entry changed (dirty)."""
+        abs_path = os.path.join(self._watch_dir, rel_path)
+        if os.path.exists(abs_path):
+            return False  # atomic-write rename: file is already back, not a real deletion
         existing = self._entries.get(rel_path)
         if existing is None or existing.deleted:
             return False
