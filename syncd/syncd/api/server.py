@@ -14,14 +14,17 @@ class ApiServer:
         self._runner: web.AppRunner | None = None
 
     async def start(self, app_state: dict) -> None:
+        from syncd.platform.ipc import is_unix_socket_address, make_site
+
         app = web.Application()
         app["state"] = app_state
         app.add_routes(build_routes())
 
-        await remove_socket(self._socket_path)
+        if is_unix_socket_address(self._socket_path):
+            await remove_socket(self._socket_path)
         self._runner = web.AppRunner(app)
         await self._runner.setup()
-        site = web.UnixSite(self._runner, self._socket_path)
+        site = await make_site(self._runner, self._socket_path)
         await site.start()
         logger.info("API listening on %s", self._socket_path)
 

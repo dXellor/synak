@@ -1,6 +1,5 @@
 import asyncio
 import logging
-import signal
 
 from syncd.config import AppConfig, ConfigError, load_config
 
@@ -19,8 +18,8 @@ class Daemon:
     async def run(self) -> None:
         self._shutdown_event = asyncio.Event()
         loop = asyncio.get_running_loop()
-        loop.add_signal_handler(signal.SIGTERM, self._handle_sigterm)
-        loop.add_signal_handler(signal.SIGHUP, self._handle_sighup)
+        from syncd.platform.signals import register_signal_handlers
+        register_signal_handlers(loop, self._handle_sigterm, self._reload_config)
 
         logger.info("syncd starting")
         try:
@@ -58,11 +57,6 @@ class Daemon:
         logger.info("SIGTERM received, shutting down")
         if self._shutdown_event:
             self._shutdown_event.set()
-
-    def _handle_sighup(self) -> None:
-        logger.info("SIGHUP received, reloading config")
-        loop = asyncio.get_running_loop()
-        loop.create_task(self._reload_config())
 
     async def _reload_config(self) -> None:
         if not self._config_path:

@@ -1,9 +1,8 @@
-import os
 from typing import Any
 
 import httpx
 
-DEFAULT_SOCKET = "/run/user/{uid}/syncd.sock"
+from synctl.platform.ipc import default_socket_address, make_transport, base_url
 
 
 class DaemonNotRunningError(Exception):
@@ -16,33 +15,34 @@ class DaemonError(Exception):
 
 class DaemonClient:
     def __init__(self, socket_path: str | None = None) -> None:
-        self._socket = socket_path or DEFAULT_SOCKET.format(uid=os.getuid())
-        self._transport = httpx.AsyncHTTPTransport(uds=self._socket)
+        self._address = socket_path or default_socket_address()
+        self._transport = make_transport(self._address)
+        self._base_url = base_url(self._address)
 
     async def get(self, path: str) -> Any:
         try:
             async with httpx.AsyncClient(
-                transport=self._transport, base_url="http://syncd"
+                transport=self._transport, base_url=self._base_url
             ) as client:
                 resp = await client.get(path)
                 _raise_for_status(resp)
                 return resp.json()
         except httpx.ConnectError as e:
             raise DaemonNotRunningError(
-                f"Cannot connect to syncd at {self._socket}"
+                f"Cannot connect to syncd at {self._address}"
             ) from e
 
     async def post(self, path: str, body: dict | None = None) -> Any:
         try:
             async with httpx.AsyncClient(
-                transport=self._transport, base_url="http://syncd"
+                transport=self._transport, base_url=self._base_url
             ) as client:
                 resp = await client.post(path, json=body or {})
                 _raise_for_status(resp)
                 return resp.json()
         except httpx.ConnectError as e:
             raise DaemonNotRunningError(
-                f"Cannot connect to syncd at {self._socket}"
+                f"Cannot connect to syncd at {self._address}"
             ) from e
 
 

@@ -43,12 +43,9 @@ class AppConfig:
     peers: PeersConfig
 
 
-def _default_socket() -> str:
-    return f"/run/user/{os.getuid()}/syncd.sock"
-
-
 def _parse_daemon(raw: dict[str, Any]) -> DaemonConfig:
-    socket = raw.get("api_socket", _default_socket())
+    from syncd.platform.ipc import default_socket_address
+    socket = raw.get("api_socket", default_socket_address())
     log_level = raw.get("log_level", "info")
     if log_level not in _VALID_LOG_LEVELS:
         raise ConfigError(
