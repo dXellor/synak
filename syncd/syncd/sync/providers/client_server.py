@@ -152,13 +152,11 @@ class ClientServerProvider(SyncProvider):
         assert self._context is not None and self._index is not None
         watch_dir = self._context.local
         meta_prefix = os.path.join(watch_dir, METADATA_DIR) + os.sep
-        async for changes in awatch(watch_dir):
+        async for changes in awatch(watch_dir, watch_filter=lambda _c, p: not p.startswith(meta_prefix)):
             if self._index is None:
                 break
             dirty = False
             for change_type, path in changes:
-                if path.startswith(meta_prefix):
-                    continue
                 rel = os.path.relpath(path, watch_dir)
                 if change_type == Change.deleted:
                     dirty |= self._index.mark_deleted(rel)

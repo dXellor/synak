@@ -53,6 +53,7 @@ def main() -> None:
         level=log_level,
         format="%(asctime)s %(name)s %(levelname)s %(message)s",
     )
+    logging.getLogger("watchfiles").setLevel(logging.WARNING)
 
     daemon = Daemon(config, config_path=args.config)
     asyncio.run(daemon.run())
