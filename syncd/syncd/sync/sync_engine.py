@@ -52,7 +52,7 @@ def resolve_keep_both(
     Idempotent: renaming twice produces the same result (CRDT property).
     Returns ACCEPT_REMOTE so the caller writes the remote version to the original path.
     """
-    conflict_path = os.path.join(watch_dir, f"{local.path}.conflict.{node_id}")
+    conflict_path = os.path.join(watch_dir, f"{local.path}.syncd-conflict.{node_id}")
     src = os.path.join(watch_dir, local.path)
     if os.path.exists(src) and not os.path.exists(conflict_path):
         shutil.copy2(src, conflict_path)

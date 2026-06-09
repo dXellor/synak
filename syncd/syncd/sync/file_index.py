@@ -16,7 +16,7 @@ INDEX_FILE = "index.json"
 
 _DEFAULT_EXCLUDES = {
     "*.swp", "*-swp", "*.swpx", "*.swn",
-    ".DS_Store",     
+    ".DS_Store",
     "Thumbs.db",
     "*.tmp", "*.temp",
     "*~",
