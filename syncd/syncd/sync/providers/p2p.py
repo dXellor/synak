@@ -31,9 +31,9 @@ from syncd.sync import protocol as proto
 logger = logging.getLogger(__name__)
 
 
-def _port_for_group(group: str) -> int:
-    """Derive a stable port in 30000-65535 from a group name."""
-    return 30000 + (int(hashlib.sha256(group.encode()).hexdigest(), 16) % 35536)
+def _port_for_pair(pair_id: str) -> int:
+    """Derive a stable port in 30000-65535 from a pair id."""
+    return 30000 + (int(hashlib.sha256(pair_id.encode()).hexdigest(), 16) % 35536)
 
 
 def _parse_peer(peer: str, default_port: int) -> tuple[str, int]:
@@ -98,9 +98,7 @@ class P2PProvider(SyncProvider):
         await asyncio.to_thread(self._index.scan)
         await asyncio.to_thread(self._index.save)
 
-        self._port = cfg.get("port") or _port_for_group(
-            context.group or context.pair_id
-        )
+        self._port = cfg.get("port") or _port_for_pair(context.pair_id)
         self._server = await asyncio.start_server(
             self._handle_connection, "0.0.0.0", self._port
         )

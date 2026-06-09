@@ -11,7 +11,6 @@ class SyncContext:
     interval: int
     provider_config: dict[str, Any]
     exclude: list[str] = field(default_factory=list)
-    group: str = ""
 
 
 @dataclass

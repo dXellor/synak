@@ -1,6 +1,6 @@
 import os
 import tomllib
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 DEFAULT_CONFIG_PATH = os.path.expanduser("~/.config/syncd/config.toml")
@@ -28,7 +28,6 @@ class PairConfig:
     interval: int
     provider: dict[str, Any]
     exclude: tuple[str, ...] = ()
-    group: str = ""
 
 
 @dataclass(frozen=True)
@@ -77,10 +76,6 @@ def _parse_pair(raw: dict[str, Any], index: int) -> PairConfig:
     if not isinstance(exclude_raw, list) or not all(isinstance(e, str) for e in exclude_raw):
         raise ConfigError(f"{ctx}: exclude must be an array of strings")
 
-    group = raw.get("group", "")
-    if not isinstance(group, str):
-        raise ConfigError(f"{ctx}: group must be a string")
-
     return PairConfig(
         id=raw["id"],
         mode=raw["mode"],
@@ -89,7 +84,6 @@ def _parse_pair(raw: dict[str, Any], index: int) -> PairConfig:
         interval=interval,
         provider=provider,
         exclude=tuple(exclude_raw),
-        group=group,
     )
 
 
