@@ -135,15 +135,7 @@ class FileIndex:
         # Detect deletions — mark with tombstone
         for rel_path, entry in list(self._entries.items()):
             if rel_path not in seen and not entry.deleted:
-                clock = entry.get_clock(self._node_id)
-                clock.increment()
-                self._entries[rel_path] = FileEntry(
-                    path=rel_path,
-                    checksum="",
-                    modified_time=0.0,
-                    vector_clock_data=clock.to_dict(),
-                    deleted=True,
-                )
+                self._entries[rel_path] = self._make_tombstone(rel_path, entry)
                 dirty.add(rel_path)
 
         return dirty
@@ -157,10 +149,11 @@ class FileIndex:
             return False
         mtime = os.path.getmtime(abs_path)
         existing = self._entries.get(rel_path)
-        if existing is not None and not existing.deleted and abs(mtime - existing.modified_time) <= 0.001:
+        stable = existing is not None and not existing.deleted
+        if stable and abs(mtime - existing.modified_time) <= 0.001:  # type: ignore[union-attr]
             return False
         checksum = _sha256(abs_path)
-        if existing is not None and not existing.deleted and checksum == existing.checksum:
+        if stable and checksum == existing.checksum:  # type: ignore[union-attr]
             return False
         clock = existing.get_clock(self._node_id) if existing is not None else VectorClock(self._node_id)
         clock.increment()
@@ -180,15 +173,7 @@ class FileIndex:
         existing = self._entries.get(rel_path)
         if existing is None or existing.deleted:
             return False
-        clock = existing.get_clock(self._node_id)
-        clock.increment()
-        self._entries[rel_path] = FileEntry(
-            path=rel_path,
-            checksum="",
-            modified_time=0.0,
-            vector_clock_data=clock.to_dict(),
-            deleted=True,
-        )
+        self._entries[rel_path] = self._make_tombstone(rel_path, existing)
         return True
 
     def get(self, path: str) -> FileEntry | None:
@@ -199,6 +184,21 @@ class FileIndex:
 
     def all_entries(self) -> dict[str, FileEntry]:
         return dict(self._entries)
+
+    def all_entries_dict(self) -> dict[str, Any]:
+        """Serialize all entries directly — avoids an intermediate dict copy."""
+        return {p: e.to_dict() for p, e in self._entries.items()}
+
+    def _make_tombstone(self, rel_path: str, existing: FileEntry) -> FileEntry:
+        clock = existing.get_clock(self._node_id)
+        clock.increment()
+        return FileEntry(
+            path=rel_path,
+            checksum="",
+            modified_time=0.0,
+            vector_clock_data=clock.to_dict(),
+            deleted=True,
+        )
 
     def apply_remote(self, entry: FileEntry, content: bytes | None) -> None:
         """Write a remote file to disk and record it in the index."""
