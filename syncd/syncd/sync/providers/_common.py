@@ -6,8 +6,10 @@ import asyncio
 import logging
 import os
 
+from watchfiles import awatch, Change
+
 from syncd.sync.base import SyncContext, SyncProvider
-from syncd.sync.file_index import FileEntry, FileIndex
+from syncd.sync.file_index import FileEntry, FileIndex, METADATA_DIR
 from syncd.sync.sync_engine import Action, reconcile, resolve_last_write_wins, resolve_keep_both
 from syncd.sync import protocol as proto
 
@@ -72,8 +74,6 @@ class BaseSyncProvider(SyncProvider):
         self._state = "idle"
 
     async def _watch_loop(self) -> None:
-        from watchfiles import awatch, Change
-        from syncd.sync.file_index import METADATA_DIR
         assert self._context is not None and self._index is not None
         watch_dir = self._context.local
         meta_prefix = os.path.join(watch_dir, METADATA_DIR) + os.sep

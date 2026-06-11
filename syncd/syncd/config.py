@@ -3,6 +3,8 @@ import tomllib
 from dataclasses import dataclass
 from typing import Any
 
+from syncd.platform.ipc import default_socket_address
+
 DEFAULT_CONFIG_PATH = os.path.expanduser("~/.config/syncd/config.toml")
 
 _VALID_DIRECTIONS = {"push", "pull", "bidirectional"}
@@ -44,7 +46,6 @@ class AppConfig:
 
 
 def _parse_daemon(raw: dict[str, Any]) -> DaemonConfig:
-    from syncd.platform.ipc import default_socket_address
     socket = raw.get("api_socket", default_socket_address())
     log_level = raw.get("log_level", "info")
     if log_level not in _VALID_LOG_LEVELS:

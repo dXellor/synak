@@ -5,6 +5,8 @@ import sys
 
 from syncd.config import ConfigError, DEFAULT_CONFIG_PATH, load_config
 from syncd.daemon import Daemon
+from syncd.platform.ipc import default_log_path
+from syncd.platform.process import daemonize, already_detached
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -38,9 +40,7 @@ def main() -> None:
         sys.exit(1)
 
     if args.detach:
-        from syncd.platform.process import daemonize, already_detached
         if not already_detached():
-            from syncd.platform.ipc import default_log_path
             log_path = default_log_path(config.daemon.api_socket)
             print(f"syncd: starting in background — logs: {log_path}")
             sys.stdout.flush()

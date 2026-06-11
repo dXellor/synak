@@ -3,6 +3,7 @@ import logging
 import aiohttp.web as web
 
 from syncd.api.routes import build_routes
+from syncd.platform.ipc import is_unix_socket_address, make_site
 from syncd.utils.fs import remove_socket
 
 logger = logging.getLogger(__name__)
@@ -14,8 +15,6 @@ class ApiServer:
         self._runner: web.AppRunner | None = None
 
     async def start(self, app_state: dict) -> None:
-        from syncd.platform.ipc import is_unix_socket_address, make_site
-
         app = web.Application()
         app["state"] = app_state
         app.add_routes(build_routes())

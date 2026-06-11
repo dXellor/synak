@@ -2,6 +2,9 @@ import asyncio
 import logging
 
 from syncd.config import AppConfig, ConfigError, load_config
+from syncd.platform.signals import register_signal_handlers
+from syncd.sync.manager import SyncManager
+from syncd.api.server import ApiServer
 
 logger = logging.getLogger(__name__)
 
@@ -11,14 +14,13 @@ class Daemon:
         self._config = config
         self._config_path = config_path
         self._shutdown_event: asyncio.Event | None = None
-        self._api: "ApiServer | None" = None  # type: ignore[name-defined]
-        self._manager: object | None = None
+        self._api: ApiServer | None = None
+        self._manager: SyncManager | None = None
         self._app_state: dict = {}
 
     async def run(self) -> None:
         self._shutdown_event = asyncio.Event()
         loop = asyncio.get_running_loop()
-        from syncd.platform.signals import register_signal_handlers
         register_signal_handlers(loop, self._handle_sigterm, self._reload_config)
 
         logger.info("syncd starting")
@@ -31,8 +33,6 @@ class Daemon:
 
     async def _startup(self) -> None:
         import syncd.sync.providers  # noqa: F401 — triggers provider auto-registration
-        from syncd.sync.manager import SyncManager
-        from syncd.api.server import ApiServer
 
         self._manager = SyncManager()
         await self._manager.start_all(self._config.pairs)
@@ -49,9 +49,7 @@ class Daemon:
         if self._api is not None:
             await self._api.stop()
         if self._manager is not None:
-            from syncd.sync.manager import SyncManager
-            if isinstance(self._manager, SyncManager):
-                await self._manager.stop_all()
+            await self._manager.stop_all()
 
     def _handle_sigterm(self) -> None:
         logger.info("SIGTERM received, shutting down")
@@ -68,8 +66,7 @@ class Daemon:
             logger.error("Config reload failed: %s", e)
             return
 
-        from syncd.sync.manager import SyncManager
-        if isinstance(self._manager, SyncManager):
+        if self._manager is not None:
             await self._manager.stop_all()
         self._manager = SyncManager()
         await self._manager.start_all(new_config.pairs)
