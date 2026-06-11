@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from syncd.sync.vector_clock import VectorClock
@@ -103,7 +104,7 @@ class FileIndex:
             dirnames[:] = [d for d in dirnames if d != METADATA_DIR]
             for fname in filenames:
                 abs_path = os.path.join(dirpath, fname)
-                rel_path = os.path.relpath(abs_path, self._watch_dir)
+                rel_path = Path(abs_path).relative_to(self._watch_dir).as_posix()
                 if _is_excluded(fname, rel_path, self._excludes):
                     continue
                 seen.add(rel_path)
@@ -145,9 +146,10 @@ class FileIndex:
 
     def scan_one(self, rel_path: str) -> bool:
         """Reindex a single file. Returns True if the entry changed (dirty)."""
-        if _is_excluded(os.path.basename(rel_path), rel_path, self._excludes):
+        rel_path = Path(rel_path).as_posix()
+        if _is_excluded(Path(rel_path).name, rel_path, self._excludes):
             return False
-        abs_path = os.path.join(self._watch_dir, rel_path)
+        abs_path = str(Path(self._watch_dir) / rel_path)
         if not os.path.exists(abs_path) or os.path.isdir(abs_path):
             return False
         mtime = os.path.getmtime(abs_path)
@@ -170,7 +172,8 @@ class FileIndex:
 
     def mark_deleted(self, rel_path: str) -> bool:
         """Tombstone a path. Returns True if the entry changed (dirty)."""
-        abs_path = os.path.join(self._watch_dir, rel_path)
+        rel_path = Path(rel_path).as_posix()
+        abs_path = str(Path(self._watch_dir) / rel_path)
         if os.path.exists(abs_path):
             return False  # atomic-write rename: file is already back, not a real deletion
         existing = self._entries.get(rel_path)
@@ -205,10 +208,11 @@ class FileIndex:
 
     def verify_one(self, rel_path: str) -> bool:
         """Return True if the file's on-disk checksum differs from the index (corruption)."""
+        rel_path = Path(rel_path).as_posix()
         entry = self._entries.get(rel_path)
         if entry is None or entry.deleted:
             return False
-        abs_path = os.path.join(self._watch_dir, rel_path)
+        abs_path = str(Path(self._watch_dir) / rel_path)
         if not os.path.exists(abs_path):
             return False
         try:
@@ -225,7 +229,7 @@ class FileIndex:
     def apply_remote(self, entry: FileEntry, content: bytes | None) -> None:
         """Write a remote file to disk and record it in the index."""
         self._corrupted.discard(entry.path)
-        abs_path = os.path.join(self._watch_dir, entry.path)
+        abs_path = str(Path(self._watch_dir) / entry.path)
         if entry.deleted:
             if os.path.exists(abs_path):
                 os.remove(abs_path)
