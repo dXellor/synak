@@ -75,6 +75,7 @@ class FileIndex:
         self._node_id = node_id
         self._excludes: set[str] = _DEFAULT_EXCLUDES | set(extra_excludes or [])
         self._entries: dict[str, FileEntry] = {}
+        self._corrupted: set[str] = set()
         self._meta_dir = os.path.join(watch_dir, METADATA_DIR)
         self._index_path = os.path.join(self._meta_dir, INDEX_FILE)
 
@@ -200,8 +201,28 @@ class FileIndex:
             deleted=True,
         )
 
+    def verify_one(self, rel_path: str) -> bool:
+        """Return True if the file's on-disk checksum differs from the index (corruption)."""
+        entry = self._entries.get(rel_path)
+        if entry is None or entry.deleted:
+            return False
+        abs_path = os.path.join(self._watch_dir, rel_path)
+        if not os.path.exists(abs_path):
+            return False
+        try:
+            return _sha256(abs_path) != entry.checksum
+        except OSError:
+            return False
+
+    def mark_corrupted(self, rel_path: str) -> None:
+        self._corrupted.add(rel_path)
+
+    def is_corrupted(self, rel_path: str) -> bool:
+        return rel_path in self._corrupted
+
     def apply_remote(self, entry: FileEntry, content: bytes | None) -> None:
         """Write a remote file to disk and record it in the index."""
+        self._corrupted.discard(entry.path)
         abs_path = os.path.join(self._watch_dir, entry.path)
         if entry.deleted:
             if os.path.exists(abs_path):

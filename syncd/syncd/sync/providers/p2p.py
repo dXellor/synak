@@ -68,6 +68,14 @@ class P2PProvider(BaseSyncProvider):
                 "type": "boolean",
                 "description": "Whether to propagate remote deletions. Default true.",
             },
+            "verify_interval": {
+                "type": "integer",
+                "description": "Seconds between integrity verify passes. 0 or absent = disabled.",
+            },
+            "verify_sleep": {
+                "type": "number",
+                "description": "Seconds between per-file hashes during a verify pass. Default 0.1.",
+            },
         },
         "required": ["peers"],
         "additionalProperties": False,
@@ -96,6 +104,7 @@ class P2PProvider(BaseSyncProvider):
         self._watch_task = asyncio.create_task(
             self._watch_loop(), name=f"p2p-watch-{context.pair_id}"
         )
+        self._start_verify_if_configured(context)
         logger.info("P2P node %r listening on port %d", self._node_id, self._port)
 
     async def trigger(self) -> None:

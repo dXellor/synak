@@ -53,6 +53,14 @@ class ClientServerProvider(BaseSyncProvider):
                 "type": "boolean",
                 "description": "Whether to propagate remote deletions. Default true.",
             },
+            "verify_interval": {
+                "type": "integer",
+                "description": "Seconds between integrity verify passes. 0 or absent = disabled.",
+            },
+            "verify_sleep": {
+                "type": "number",
+                "description": "Seconds between per-file hashes during a verify pass. Default 0.1.",
+            },
         },
         "required": ["mode", "port"],
         "additionalProperties": False,
@@ -70,6 +78,7 @@ class ClientServerProvider(BaseSyncProvider):
         self._watch_task = asyncio.create_task(
             self._watch_loop(), name=f"cs-watch-{context.pair_id}"
         )
+        self._start_verify_if_configured(context)
         if cfg["mode"] == "server":
             bind_host = cfg.get("host", "0.0.0.0")
             port = cfg["port"]

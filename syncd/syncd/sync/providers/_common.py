@@ -32,6 +32,7 @@ class BaseSyncProvider(SyncProvider):
         self._error: str = ""
         self._task: asyncio.Task | None = None
         self._watch_task: asyncio.Task | None = None
+        self._verify_task: asyncio.Task | None = None
         self._server: asyncio.Server | None = None
         self._paused = asyncio.Event()
         self._paused.set()
@@ -51,7 +52,7 @@ class BaseSyncProvider(SyncProvider):
             self._server.close()
             await self._server.wait_closed()
             self._server = None
-        for task in (self._task, self._watch_task):
+        for task in (self._task, self._watch_task, self._verify_task):
             if task is not None:
                 task.cancel()
                 try:
@@ -60,6 +61,7 @@ class BaseSyncProvider(SyncProvider):
                     pass
         self._task = None
         self._watch_task = None
+        self._verify_task = None
 
     async def pause(self) -> None:
         self._paused.clear()
@@ -104,6 +106,9 @@ class BaseSyncProvider(SyncProvider):
                 needed.append(path)
             elif action == Action.CONFLICT:
                 if self._resolve_conflict(local_entry, remote_entry, path) == Action.ACCEPT_REMOTE:
+                    needed.append(path)
+            elif action == Action.KEEP_LOCAL:
+                if self._index.is_corrupted(path):
                     needed.append(path)
         return needed
 
@@ -162,3 +167,28 @@ class BaseSyncProvider(SyncProvider):
             await proto.send_message(writer, proto.file_data_msg(path, content, entry.to_dict()))
         except OSError:
             pass
+
+    def _start_verify_if_configured(self, context: SyncContext) -> None:
+        if context.provider_config.get("verify_interval"):
+            self._verify_task = asyncio.create_task(
+                self._verify_loop(), name=f"verify-{context.pair_id}"
+            )
+
+    async def _verify_loop(self) -> None:
+        assert self._context is not None and self._index is not None
+        cfg = self._context.provider_config
+        verify_interval: int = cfg.get("verify_interval", 0)
+        verify_sleep: float = cfg.get("verify_sleep", 0.1)
+        pair_id = self._context.pair_id
+
+        while True:
+            await asyncio.sleep(verify_interval)
+            await self._paused.wait()
+            for path, entry in list(self._index.all_entries().items()):
+                if entry.deleted:
+                    continue
+                corrupted = await asyncio.to_thread(self._index.verify_one, path)
+                if corrupted:
+                    self._index.mark_corrupted(path)
+                    logger.warning("Corruption detected in %r for pair %r", path, pair_id)
+                await asyncio.sleep(verify_sleep)
