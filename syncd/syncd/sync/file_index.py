@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from syncd.sync.vector_clock import VectorClock
+from syncd.utils.fs import hide_path
 
 METADATA_DIR = ".synak"
 INDEX_FILE = "index.json"
@@ -81,6 +82,7 @@ class FileIndex:
 
     def load(self) -> None:
         os.makedirs(self._meta_dir, exist_ok=True)
+        hide_path(self._meta_dir)
         if not os.path.exists(self._index_path):
             return
         with open(self._index_path) as f:

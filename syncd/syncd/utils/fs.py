@@ -1,10 +1,19 @@
 import asyncio
 import os
 import stat
+import sys
 
 
 def expand_path(path: str) -> str:
     return os.path.expandvars(os.path.expanduser(path))
+
+
+def hide_path(path: str) -> None:
+    """Set the hidden attribute on Windows. No-op on other platforms."""
+    if sys.platform == "win32":
+        import ctypes
+        FILE_ATTRIBUTE_HIDDEN = 0x2
+        ctypes.windll.kernel32.SetFileAttributesW(path, FILE_ATTRIBUTE_HIDDEN)  # type: ignore[attr-defined]
 
 
 async def ensure_dir(path: str) -> None:
