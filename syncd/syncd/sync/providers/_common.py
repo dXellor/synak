@@ -98,8 +98,12 @@ class BaseSyncProvider(SyncProvider):
             if remote_entry.deleted:
                 continue
             local_entry = self._index.get(path)
-            if local_entry is None or local_entry.deleted:
+            if local_entry is None:
                 needed.append(path)
+                continue
+            if local_entry.deleted:
+                if reconcile(local_entry, remote_entry, self._node_id) == Action.ACCEPT_REMOTE:
+                    needed.append(path)
                 continue
             action = reconcile(local_entry, remote_entry, self._node_id)
             if action == Action.ACCEPT_REMOTE:
