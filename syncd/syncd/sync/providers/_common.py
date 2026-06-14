@@ -117,6 +117,8 @@ class BaseSyncProvider(SyncProvider):
         return needed
 
     def _resolve_conflict(self, local: FileEntry, remote: FileEntry, path: str) -> Action:
+        if local.checksum == remote.checksum:
+            return Action.KEEP_LOCAL
         logger.warning(
             "Conflict on %r for pair %r — strategy: %r",
             path, self._context.pair_id if self._context else "?", self._conflict_strategy,
