@@ -1,9 +1,11 @@
 import logging
+from typing import Type
 
 import jsonschema
 
 from syncd.config import PairConfig
 from syncd.sync.base import SyncContext, SyncProvider, ProviderStatus
+from syncd.sync.providers.subprocess import SubprocessProvider
 from syncd.sync.registry import registry, UnknownProviderError
 
 logger = logging.getLogger(__name__)
@@ -54,18 +56,27 @@ class SyncManager:
         return self._providers[pair_id]
 
     async def _start_pair(self, pair: PairConfig) -> None:
+        provider_cls: Type[SyncProvider]
         try:
             provider_cls = registry.get(pair.mode)
         except UnknownProviderError:
-            logger.error("Unknown provider mode %r for pair %r — skipping", pair.mode, pair.id)
-            return
+            if not pair.provider.get("binary"):
+                logger.error(
+                    "Unknown provider mode %r for pair %r (no 'binary' key) — skipping",
+                    pair.mode, pair.id,
+                )
+                return
+            # Any external binary that speaks the subprocess IPC protocol can be used
+            # without a dedicated Python wrapper — just set binary = "..." in config.
+            provider_cls = SubprocessProvider
 
-        try:
-            jsonschema.validate(pair.provider, provider_cls.SCHEMA)
-        except jsonschema.ValidationError as e:
-            raise ProviderConfigError(
-                f"Invalid provider config for pair {pair.id!r}: {e.message}"
-            ) from e
+        if hasattr(provider_cls, "SCHEMA"):
+            try:
+                jsonschema.validate(pair.provider, provider_cls.SCHEMA)
+            except jsonschema.ValidationError as e:
+                raise ProviderConfigError(
+                    f"Invalid provider config for pair {pair.id!r}: {e.message}"
+                ) from e
 
         context = SyncContext(
             pair_id=pair.id,
@@ -76,6 +87,12 @@ class SyncManager:
             exclude=list(pair.exclude),
         )
         provider = provider_cls()
-        await provider.start(context)
+        try:
+            await provider.start(context)
+        except ValueError as e:
+            raise ProviderConfigError(str(e)) from e
+        except Exception as e:
+            logger.error("Failed to start provider for pair %r: %s", pair.id, e)
+            return
         self._providers[pair.id] = provider
         logger.info("Started provider %r for pair %r", pair.mode, pair.id)
