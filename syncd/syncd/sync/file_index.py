@@ -244,6 +244,10 @@ class FileIndex:
         if entry.deleted:
             if os.path.exists(abs_path):
                 os.remove(abs_path)
+                parent = os.path.dirname(abs_path)
+                while parent != self._watch_dir and os.path.isdir(parent) and not os.listdir(parent):
+                    os.rmdir(parent)
+                    parent = os.path.dirname(parent)
             self._entries[entry.path] = entry
         else:
             parent = os.path.dirname(abs_path)
