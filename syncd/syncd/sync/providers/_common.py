@@ -84,7 +84,15 @@ class BaseSyncProvider(SyncProvider):
             for change_type, path in changes:
                 rel = os.path.relpath(path, watch_dir)
                 if change_type == Change.deleted:
-                    dirty |= self._index.mark_deleted(rel)
+                    if not self._index.mark_deleted(rel):
+                        dirty |= self._index.mark_dir_deleted(rel)
+                    else:
+                        dirty = True
+                elif os.path.isdir(path):
+                    for dirpath, _, filenames in os.walk(path):
+                        for fname in filenames:
+                            frel = os.path.relpath(os.path.join(dirpath, fname), watch_dir)
+                            dirty |= self._index.scan_one(frel)
                 else:
                     dirty |= self._index.scan_one(rel)
             if dirty:

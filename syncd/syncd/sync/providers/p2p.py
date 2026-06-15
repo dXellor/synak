@@ -213,8 +213,10 @@ class P2PProvider(BaseSyncProvider):
             msg = await proto.read_message(reader)
             if not msg or msg["type"] != "HELLO":
                 return
+            peer_index = {p: FileEntry.from_dict(e) for p, e in msg.get("index", {}).items()}
 
             await proto.send_message(writer, proto.hello_msg(self._node_id, self._index.all_entries_dict()))
+            await self._apply_remote_deletions(peer_index, str(peer))
 
             # Phase 1: serve GET_FILE requests until SYNC_DONE
             while True:

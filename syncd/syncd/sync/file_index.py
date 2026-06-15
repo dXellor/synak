@@ -170,6 +170,17 @@ class FileIndex:
         )
         return True
 
+    def mark_dir_deleted(self, rel_dir: str) -> bool:
+        """Tombstone all live entries whose path starts with rel_dir/. Returns True if any changed."""
+        rel_dir = Path(rel_dir).as_posix()
+        prefix = rel_dir + "/"
+        dirty = False
+        for path, entry in list(self._entries.items()):
+            if path.startswith(prefix) and not entry.deleted:
+                self._entries[path] = self._make_tombstone(path, entry)
+                dirty = True
+        return dirty
+
     def mark_deleted(self, rel_path: str) -> bool:
         """Tombstone a path. Returns True if the entry changed (dirty)."""
         rel_path = Path(rel_path).as_posix()

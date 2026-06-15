@@ -135,6 +135,8 @@ class ClientServerProvider(BaseSyncProvider):
             msg = await proto.read_message(reader)
             if not msg or msg["type"] != "HELLO":
                 return
+            client_index = {p: FileEntry.from_dict(e) for p, e in msg.get("index", {}).items()}
+            await self._apply_remote_deletions(client_index, f"client {peer}")
 
             # Phase 1: serve GET_FILE requests from client until SYNC_DONE
             while True:
