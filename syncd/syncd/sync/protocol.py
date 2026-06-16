@@ -39,7 +39,7 @@ def encode_content(data: bytes) -> str:
 
 
 def decode_content(encoded: str) -> bytes:
-    return base64.b64decode(encoded)
+    return base64.b64decode(encoded) if encoded else b""
 
 
 # --- message constructors ---
