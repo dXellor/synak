@@ -261,7 +261,7 @@ Sent by the initiator to request a file's content.
 
 #### `FILE_DATA`
 
-Response to `GET_FILE`, or an unsolicited push. Content is base64-encoded.
+Response to `GET_FILE`, or an unsolicited push. Content is base64-encoded. Used for files smaller than 64 MB.
 
 ```json
 {
@@ -271,6 +271,21 @@ Response to `GET_FILE`, or an unsolicited push. Content is base64-encoded.
   "entry":   <FileEntry>
 }
 ```
+
+#### `FILE_DATA_STREAM`
+
+Alternative to `FILE_DATA` for files ≥ 64 MB. Avoids base64 overhead — both sender and receiver operate in O(1) memory regardless of file size.
+
+The message is a JSON header line followed immediately by exactly `size` raw bytes. There is no separator between the header `\n` and the raw bytes; the next JSON line starts right after the last byte.
+
+```json
+{"type": "FILE_DATA_STREAM", "path": "big/video.mp4", "size": 7340032000, "entry": <FileEntry>}
+<exactly size raw bytes>
+```
+
+**Receiver implementation:** write the raw bytes to a temp file (`<abs_path>.synak.tmp`) in chunks, then atomically rename to the final path. The `.synak.tmp` suffix matches the built-in `*.tmp` watcher exclusion, so no partial-write events fire. After the rename, call the index update with `content = None` to skip the file write and only record the entry.
+
+**Rejected pushes:** if reconciliation decides to reject the file (KEEP_LOCAL), the receiver must still drain all `size` bytes from the socket to keep the stream in a valid state for subsequent messages.
 
 #### `SYNC_DONE`
 
@@ -426,3 +441,7 @@ With a wrapper, bad config is caught by jsonschema before the binary is spawned.
 - [ ] Never increments the clock when detecting corruption — only flags for re-pull
 - [ ] Tombstones carry a clock increment so peers know the deletion is intentional
 - [ ] Prunes empty parent directories after applying a remote deletion
+- [ ] Sends `FILE_DATA_STREAM` (raw bytes after header JSON line) for files ≥ 64 MB; `FILE_DATA` (base64) below that
+- [ ] Handles both `FILE_DATA` and `FILE_DATA_STREAM` on receive
+- [ ] For `FILE_DATA_STREAM` receive: writes to `<path>.synak.tmp` in chunks, renames atomically — O(1) memory
+- [ ] For rejected `FILE_DATA_STREAM` pushes: drains all `size` bytes from the socket before moving on

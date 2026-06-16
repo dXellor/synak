@@ -136,6 +136,35 @@ class BaseSyncProvider(SyncProvider):
             return resolve_keep_both(local, remote, self._node_id, self._context.local)
         return resolve_last_write_wins(local, remote)
 
+    async def _apply_incoming_stream(
+        self,
+        reader: asyncio.StreamReader,
+        entry: FileEntry,
+        size: int,
+        label: str,
+    ) -> None:
+        """Receive a FILE_DATA_STREAM, writing to disk only if reconciliation accepts.
+
+        If rejected, the raw bytes are drained from the socket to keep protocol state valid.
+        """
+        assert self._index is not None and self._context is not None
+        local_entry = self._index.get(entry.path)
+        action = Action.ACCEPT_REMOTE if local_entry is None else reconcile(local_entry, entry, self._node_id)
+        accept = action == Action.ACCEPT_REMOTE
+        if action == Action.CONFLICT and local_entry is not None:
+            accept = self._resolve_conflict(local_entry, entry, entry.path) == Action.ACCEPT_REMOTE
+
+        abs_path = os.path.join(self._context.local, entry.path)
+        if accept:
+            await proto.recv_stream_to_disk(reader, size, abs_path)
+            await asyncio.to_thread(self._index.apply_remote, entry, None)
+            logger.info("Accepted %r from %s", entry.path, label)
+        else:
+            remaining = size
+            while remaining > 0:
+                chunk = await reader.readexactly(min(remaining, 1 << 20))
+                remaining -= len(chunk)
+
     async def _apply_incoming_file(
         self, entry: FileEntry, content: bytes, label: str
     ) -> None:
@@ -176,9 +205,7 @@ class BaseSyncProvider(SyncProvider):
             return
         abs_path = os.path.join(self._context.local, path)
         try:
-            with open(abs_path, "rb") as f:
-                content = f.read()
-            await proto.send_message(writer, proto.file_data_msg(path, content, entry.to_dict()))
+            await proto.send_file_data(writer, path, abs_path, entry.to_dict())
         except OSError:
             pass
 
