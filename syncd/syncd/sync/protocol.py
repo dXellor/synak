@@ -27,6 +27,8 @@ from typing import Any
 
 STREAM_THRESHOLD = 64 * 1024 * 1024  # bytes; files at or above this use binary streaming
 
+READER_LIMIT = 96 * 1024 * 1024
+
 
 async def read_message(reader: asyncio.StreamReader) -> dict[str, Any] | None:
     try:

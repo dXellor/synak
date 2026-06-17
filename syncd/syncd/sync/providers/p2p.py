@@ -95,7 +95,8 @@ class P2PProvider(BaseSyncProvider):
 
         self._port = cfg.get("port") or _port_for_pair(context.pair_id)
         self._server = await asyncio.start_server(
-            self._handle_connection, "0.0.0.0", self._port
+            self._handle_connection, "0.0.0.0", self._port,
+            limit=proto.READER_LIMIT,
         )
         self._state = "idle"
         self._task = asyncio.create_task(
@@ -158,7 +159,7 @@ class P2PProvider(BaseSyncProvider):
     async def _sync_with_peer(self, peer_addr: str) -> None:
         assert self._index is not None and self._context is not None
         host, port = _parse_peer(peer_addr, self._port)
-        reader, writer = await asyncio.open_connection(host, port)
+        reader, writer = await asyncio.open_connection(host, port, limit=proto.READER_LIMIT)
         try:
             await proto.send_message(writer, proto.hello_msg(self._node_id, self._index.all_entries_dict()))
 

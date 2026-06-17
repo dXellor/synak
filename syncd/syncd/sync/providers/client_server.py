@@ -83,7 +83,8 @@ class ClientServerProvider(BaseSyncProvider):
             bind_host = cfg.get("host", "0.0.0.0")
             port = cfg["port"]
             self._server = await asyncio.start_server(
-                self._handle_client, bind_host, port
+                self._handle_client, bind_host, port,
+                limit=proto.READER_LIMIT,
             )
             self._task = asyncio.create_task(
                 self._server_loop(), name=f"cs-server-{context.pair_id}"
@@ -186,7 +187,7 @@ class ClientServerProvider(BaseSyncProvider):
         try:
             host = ctx.provider_config.get("host", "127.0.0.1")
             port = ctx.provider_config["port"]
-            reader, writer = await asyncio.open_connection(host, port)
+            reader, writer = await asyncio.open_connection(host, port, limit=proto.READER_LIMIT)
             try:
                 await proto.send_message(writer, proto.hello_msg(self._node_id, self._index.all_entries_dict()))
 
