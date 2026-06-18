@@ -121,4 +121,17 @@ async def recv_stream_to_disk(reader: asyncio.StreamReader, size: int, abs_path:
             chunk = await reader.readexactly(min(remaining, 1 << 20))
             f.write(chunk)
             remaining -= len(chunk)
-    os.replace(tmp, abs_path)
+    
+    # Windows defender holds the temp file open while scanning it.
+    # Poll until the rename succeeds or the deadline passes.
+    deadline = asyncio.get_event_loop().time() + 60
+    delay = 0.1
+    while True:
+        try:
+            os.replace(tmp, abs_path)
+            return
+        except PermissionError:
+            if asyncio.get_event_loop().time() >= deadline:
+                raise
+            await asyncio.sleep(delay)
+            delay = min(delay * 2, 2.0)
