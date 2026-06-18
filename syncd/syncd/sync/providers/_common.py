@@ -206,6 +206,25 @@ class BaseSyncProvider(SyncProvider):
                 await asyncio.to_thread(self._index.apply_remote, remote_entry, None)
                 logger.info("Applied remote deletion of %r from %s", path, label)
 
+    async def _apply_local_renames(self, remote_index: dict[str, FileEntry]) -> None:
+        """Detect renames the remote performed and apply them locally without downloading content."""
+        assert self._index is not None
+        remote_live_by_checksum = {
+            e.checksum: p
+            for p, e in remote_index.items()
+            if not e.deleted and e.checksum
+        }
+        remote_tombstoned = {p for p, e in remote_index.items() if e.deleted}
+        for path, local_entry in list(self._index.all_entries().items()):
+            if local_entry.deleted or not local_entry.checksum:
+                continue
+            if path not in remote_tombstoned:
+                continue
+            new_path = remote_live_by_checksum.get(local_entry.checksum)
+            if not new_path or new_path == path:
+                continue
+            await self._apply_rename(path, new_path, remote_index[new_path], "remote")
+
     async def _apply_rename(
         self, from_path: str, to_path: str, new_entry: FileEntry, label: str
     ) -> None:

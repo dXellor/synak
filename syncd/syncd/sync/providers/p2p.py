@@ -169,6 +169,7 @@ class P2PProvider(BaseSyncProvider):
             remote_index = {p: FileEntry.from_dict(e) for p, e in msg.get("index", {}).items()}
 
             await self._apply_remote_deletions(remote_index, peer_addr)
+            await self._apply_local_renames(remote_index)
 
             # Phase 1: pull files we need from peer
             for path in self._compute_needed(remote_index):

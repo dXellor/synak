@@ -202,6 +202,7 @@ class ClientServerProvider(BaseSyncProvider):
                 }
 
                 await self._apply_remote_deletions(server_index, "server")
+                await self._apply_local_renames(server_index)
 
                 # Phase 1: pull files client needs from server
                 for path in self._compute_needed(server_index):
