@@ -188,15 +188,50 @@ class BaseSyncProvider(SyncProvider):
         assert self._index is not None and self._context is not None
         if not self._context.provider_config.get("sync_deletes", True):
             return
+        remote_live_by_checksum = {
+            e.checksum: p
+            for p, e in remote_index.items()
+            if not e.deleted and e.checksum
+        }
         for path, remote_entry in remote_index.items():
             if not remote_entry.deleted:
                 continue
             local_entry = self._index.get(path)
             if local_entry is None or local_entry.deleted:
                 continue
+            new_path = remote_live_by_checksum.get(local_entry.checksum)
+            if new_path and new_path != path:
+                continue  # rename incoming — skip deletion
             if reconcile(local_entry, remote_entry, self._node_id) == Action.ACCEPT_REMOTE:
                 await asyncio.to_thread(self._index.apply_remote, remote_entry, None)
                 logger.info("Applied remote deletion of %r from %s", path, label)
+
+    async def _apply_rename(
+        self, from_path: str, to_path: str, new_entry: FileEntry, label: str
+    ) -> None:
+        assert self._index is not None and self._context is not None
+        abs_from = os.path.join(self._context.local, from_path.replace("/", os.sep))
+        abs_to   = os.path.join(self._context.local, to_path.replace("/", os.sep))
+
+        from_entry = self._index.get(from_path)
+        if os.path.exists(abs_from) and from_entry and from_entry.checksum == new_entry.checksum:
+            os.makedirs(os.path.dirname(abs_to), exist_ok=True)
+            os.rename(abs_from, abs_to)
+            old_clock = from_entry.get_clock(self._node_id)
+            old_clock.increment()
+            tombstone = FileEntry(
+                path=from_path, checksum="", modified_time=0.0,
+                vector_clock_data=old_clock.to_dict(), deleted=True,
+            )
+            await asyncio.to_thread(self._index.apply_remote, tombstone, None)
+            await asyncio.to_thread(self._index.apply_remote, new_entry, None)
+            parent = os.path.dirname(abs_from)
+            while parent != self._context.local and os.path.isdir(parent) and not os.listdir(parent):
+                os.rmdir(parent)
+                parent = os.path.dirname(parent)
+            logger.info("Renamed %r → %r from %s", from_path, to_path, label)
+        else:
+            logger.warning("Rename %r → %r: source missing, will re-sync next round", from_path, to_path)
 
     async def _serve_file(self, writer: asyncio.StreamWriter, path: str) -> None:
         assert self._index is not None and self._context is not None

@@ -160,6 +160,9 @@ class ClientServerProvider(BaseSyncProvider):
                 elif req["type"] == "FILE_DATA_STREAM":
                     entry = FileEntry.from_dict(req["entry"])
                     await self._apply_incoming_stream(reader, entry, req["size"], f"client {peer}")
+                elif req["type"] == "RENAME_FILE":
+                    await self._apply_rename(req["from"], req["to"],
+                                             FileEntry.from_dict(req["entry"]), f"client {peer}")
 
             await asyncio.to_thread(self._index.save)
             self._last_sync = time.time()
@@ -218,6 +221,21 @@ class ClientServerProvider(BaseSyncProvider):
                 await proto.send_message(writer, proto.sync_done_msg())
 
                 # Phase 2: push files server is missing or behind on
+                server_live_by_checksum = {
+                    e.checksum: p
+                    for p, e in server_index.items()
+                    if not e.deleted and e.checksum
+                }
+                renames: dict[str, str] = {}
+                for path, entry in self._index.all_entries().items():
+                    if entry.deleted or not entry.checksum:
+                        continue
+                    old = server_live_by_checksum.get(entry.checksum)
+                    if old and old != path:
+                        our_old = self._index.get(old)
+                        if our_old and our_old.deleted:
+                            renames[path] = old
+
                 for path, local_entry in self._index.all_entries().items():
                     if local_entry.deleted:
                         continue
@@ -225,10 +243,14 @@ class ClientServerProvider(BaseSyncProvider):
                     if (server_entry is None
                             or server_entry.deleted
                             or reconcile(server_entry, local_entry, self._node_id) == Action.ACCEPT_REMOTE):
-                        abs_path = os.path.join(ctx.local, path)
-                        if os.path.exists(abs_path):
-                            await proto.send_file_data(writer, path, abs_path, local_entry.to_dict())
-                            logger.info("Pushed %r to server", path)
+                        if path in renames:
+                            await proto.send_message(writer, proto.rename_msg(renames[path], path, local_entry.to_dict()))
+                            logger.info("Sent rename %r → %r to server", renames[path], path)
+                        else:
+                            abs_path = os.path.join(ctx.local, path)
+                            if os.path.exists(abs_path):
+                                await proto.send_file_data(writer, path, abs_path, local_entry.to_dict())
+                                logger.info("Pushed %r to server", path)
 
                 await proto.send_message(writer, proto.ack_msg(self._node_id))
                 await asyncio.to_thread(self._index.save)

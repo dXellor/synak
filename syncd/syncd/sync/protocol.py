@@ -80,6 +80,10 @@ def ack_msg(node_id: str) -> dict[str, Any]:
     return {"type": "ACK", "node_id": node_id}
 
 
+def rename_msg(from_path: str, to_path: str, entry: dict[str, Any]) -> dict[str, Any]:
+    return {"type": "RENAME_FILE", "from": from_path, "to": to_path, "entry": entry}
+
+
 def file_data_stream_header(path: str, size: int, entry: dict[str, Any]) -> dict[str, Any]:
     return {"type": "FILE_DATA_STREAM", "path": path, "size": size, "entry": entry}
 

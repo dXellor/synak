@@ -287,6 +287,18 @@ The message is a JSON header line followed immediately by exactly `size` raw byt
 
 **Rejected pushes:** if reconciliation decides to reject the file (KEEP_LOCAL), the receiver must still drain all `size` bytes from the socket to keep the stream in a valid state for subsequent messages.
 
+#### `RENAME_FILE`
+
+Sent during the push phase as an alternative to `FILE_DATA` / `FILE_DATA_STREAM` when a rename is detected. No file content is transferred — the receiver performs `os.rename` locally.
+
+```json
+{"type": "RENAME_FILE", "from": "old/path.jpg", "to": "new/path.jpg", "entry": <FileEntry for new path>}
+```
+
+Sender only emits this when: the new path is live locally, the old path is tombstoned locally, and the old path is live at the remote with the same checksum.
+
+Receiver checks that `from` still exists on disk with a matching checksum before renaming. If the source is missing or the checksum doesn't match, it logs a warning and lets the next sync round fall back to a full transfer. The receiver also prunes any empty parent directories left behind by the rename.
+
 #### `SYNC_DONE`
 
 Sent by the initiator after it has requested all files it needs. Signals the start of the push phase.
@@ -445,3 +457,6 @@ With a wrapper, bad config is caught by jsonschema before the binary is spawned.
 - [ ] Handles both `FILE_DATA` and `FILE_DATA_STREAM` on receive
 - [ ] For `FILE_DATA_STREAM` receive: writes to `<path>.synak.tmp` in chunks, renames atomically — O(1) memory
 - [ ] For rejected `FILE_DATA_STREAM` pushes: drains all `size` bytes from the socket before moving on
+- [ ] Detects renames (same checksum, old path tombstoned locally, old path live at remote) and sends `RENAME_FILE` instead of file content
+- [ ] Handles incoming `RENAME_FILE`: verifies source exists with matching checksum, renames, updates index, prunes empty parents; falls back gracefully if source is missing
+- [ ] Skips deletion of a local file if the sender has a live entry with the same checksum at a different path (rename incoming — let `RENAME_FILE` handle it)

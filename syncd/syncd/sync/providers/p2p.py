@@ -188,6 +188,21 @@ class P2PProvider(BaseSyncProvider):
             await proto.send_message(writer, proto.sync_done_msg())
 
             # Phase 2: push files peer is missing or behind on
+            remote_live_by_checksum = {
+                e.checksum: p
+                for p, e in remote_index.items()
+                if not e.deleted and e.checksum
+            }
+            renames: dict[str, str] = {}
+            for path, entry in self._index.all_entries().items():
+                if entry.deleted or not entry.checksum:
+                    continue
+                old = remote_live_by_checksum.get(entry.checksum)
+                if old and old != path:
+                    our_old = self._index.get(old)
+                    if our_old and our_old.deleted:
+                        renames[path] = old
+
             for path, local_entry in self._index.all_entries().items():
                 if local_entry.deleted:
                     continue
@@ -195,9 +210,12 @@ class P2PProvider(BaseSyncProvider):
                 if (remote_entry is None
                         or remote_entry.deleted
                         or reconcile(remote_entry, local_entry, self._node_id) == Action.ACCEPT_REMOTE):
-                    abs_path = os.path.join(self._context.local, path)
-                    if os.path.exists(abs_path):
-                        await proto.send_file_data(writer, path, abs_path, local_entry.to_dict())
+                    if path in renames:
+                        await proto.send_message(writer, proto.rename_msg(renames[path], path, local_entry.to_dict()))
+                    else:
+                        abs_path = os.path.join(self._context.local, path)
+                        if os.path.exists(abs_path):
+                            await proto.send_file_data(writer, path, abs_path, local_entry.to_dict())
 
             await proto.send_message(writer, proto.ack_msg(self._node_id))
             await asyncio.to_thread(self._index.save)
@@ -241,6 +259,9 @@ class P2PProvider(BaseSyncProvider):
                 elif req["type"] == "FILE_DATA_STREAM":
                     entry = FileEntry.from_dict(req["entry"])
                     await self._apply_incoming_stream(reader, entry, req["size"], str(peer))
+                elif req["type"] == "RENAME_FILE":
+                    await self._apply_rename(req["from"], req["to"],
+                                             FileEntry.from_dict(req["entry"]), str(peer))
 
             await asyncio.to_thread(self._index.save)
         except Exception:
