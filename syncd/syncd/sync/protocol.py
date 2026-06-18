@@ -102,7 +102,7 @@ async def send_file_data(
         with open(abs_path, "rb") as f:
             while chunk := f.read(1 << 20):
                 writer.write(chunk)
-        await writer.drain()
+                await writer.drain()
 
 
 async def recv_stream_to_disk(reader: asyncio.StreamReader, size: int, abs_path: str) -> None:
