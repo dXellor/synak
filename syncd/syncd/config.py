@@ -96,6 +96,17 @@ def _parse_peers(raw: dict[str, Any]) -> PeersConfig:
     return PeersConfig(discovery=discovery, static=list(static_list))
 
 
+def parse_config_from_dict(raw: dict[str, Any]) -> AppConfig:
+    """Parse and validate a config dict (same structure as the TOML file). Raises ConfigError."""
+    daemon = _parse_daemon(raw.get("daemon", {}))
+    pairs_raw = raw.get("pairs", [])
+    if not isinstance(pairs_raw, list):
+        raise ConfigError("'pairs' must be an array of tables")
+    pairs = [_parse_pair(p, i) for i, p in enumerate(pairs_raw)]
+    peers = _parse_peers(raw.get("peers", {}))
+    return AppConfig(daemon=daemon, pairs=pairs, peers=peers)
+
+
 def load_config(path: str = DEFAULT_CONFIG_PATH) -> AppConfig:
     """Load and validate config from a TOML file. Raises ConfigError on failure."""
     try:
@@ -105,14 +116,4 @@ def load_config(path: str = DEFAULT_CONFIG_PATH) -> AppConfig:
         raise ConfigError(f"Config file not found: {path}")
     except tomllib.TOMLDecodeError as e:
         raise ConfigError(f"Invalid TOML in {path}: {e}")
-
-    daemon = _parse_daemon(raw.get("daemon", {}))
-
-    pairs_raw = raw.get("pairs", [])
-    if not isinstance(pairs_raw, list):
-        raise ConfigError("'pairs' must be an array of tables")
-    pairs = [_parse_pair(p, i) for i, p in enumerate(pairs_raw)]
-
-    peers = _parse_peers(raw.get("peers", {}))
-
-    return AppConfig(daemon=daemon, pairs=pairs, peers=peers)
+    return parse_config_from_dict(raw)

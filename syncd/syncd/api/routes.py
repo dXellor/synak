@@ -13,6 +13,7 @@ def build_routes() -> list[web.RouteDef]:
         web.get("/status", handle_status),
         web.get("/config", handle_config),
         web.post("/config/reload", handle_config_reload),
+        web.post("/config/apply", handle_config_apply),
         web.get("/pairs", handle_pairs),
         web.post("/pairs/{id}/sync", handle_pair_sync),
         web.post("/pairs/{id}/pause", handle_pair_pause),
@@ -61,6 +62,24 @@ async def handle_config_reload(request: web.Request) -> web.Response:
     import asyncio
     asyncio.get_running_loop().create_task(daemon._reload_config())
     return _json({})
+
+
+async def handle_config_apply(request: web.Request) -> web.Response:
+    from syncd.config import parse_config_from_dict, ConfigError
+    try:
+        body = await request.json()
+    except Exception:
+        return _error("request body must be valid JSON", status=400)
+    try:
+        new_config = parse_config_from_dict(body)
+    except ConfigError as e:
+        return _error(str(e), status=422)
+    daemon = _state(request)["daemon"]
+    try:
+        await daemon.apply_config(new_config)
+    except Exception as e:
+        return _error(str(e), status=500)
+    return _json(dataclasses.asdict(daemon._config))
 
 
 async def handle_pairs(request: web.Request) -> web.Response:

@@ -1,4 +1,5 @@
 import asyncio
+import dataclasses
 import logging
 
 from syncd.config import AppConfig, ConfigError, load_config
@@ -56,15 +57,14 @@ class Daemon:
         if self._shutdown_event:
             self._shutdown_event.set()
 
-    async def _reload_config(self) -> None:
-        if not self._config_path:
-            logger.warning("No config path set, cannot reload")
-            return
-        try:
-            new_config = load_config(self._config_path)
-        except ConfigError as e:
-            logger.error("Config reload failed: %s", e)
-            return
+    async def apply_config(self, new_config: AppConfig) -> None:
+        """Apply a new config in memory. api_socket is preserved — it cannot change at runtime."""
+        # Preserve the running socket address; the UI cannot move the socket while connected.
+        new_config = dataclasses.replace(
+            new_config,
+            daemon=dataclasses.replace(new_config.daemon, api_socket=self._config.daemon.api_socket),
+        )
+        old_log_level = self._config.daemon.log_level
 
         if self._manager is not None:
             await self._manager.stop_all()
@@ -74,4 +74,21 @@ class Daemon:
         self._config = new_config
         self._app_state["config"] = self._config
         self._app_state["manager"] = self._manager
+
+        if new_config.daemon.log_level != old_log_level:
+            logging.getLogger().setLevel(new_config.daemon.log_level.upper())
+            logger.info("Log level changed to %s", new_config.daemon.log_level)
+
+        logger.info("Config applied via API")
+
+    async def _reload_config(self) -> None:
+        if not self._config_path:
+            logger.warning("No config path set, cannot reload")
+            return
+        try:
+            new_config = load_config(self._config_path)
+        except ConfigError as e:
+            logger.error("Config reload failed: %s", e)
+            return
+        await self.apply_config(new_config)
         logger.info("Config reloaded from %s", self._config_path)
