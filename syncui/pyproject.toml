@@ -13,8 +13,8 @@ dependencies = [
 ]
 
 [project.scripts]
-syncui = "sync_web.app:main"
+syncui = "syncui.app:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["sync_web*"]
+include = ["syncui*"]

@@ -1,7 +1,7 @@
 """Round-trip tests for JSON<->TOML conversion."""
 
 import pytest
-from sync_web.tomlio import dict_to_toml, toml_to_dict
+from syncui.tomlio import dict_to_toml, toml_to_dict
 
 FULL_CONFIG = {
     "daemon": {

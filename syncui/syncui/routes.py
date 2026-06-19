@@ -1,11 +1,11 @@
-"""Flask route definitions for sync-web."""
+"""Flask route definitions for syncui."""
 
 from __future__ import annotations
 
 from flask import Flask, current_app, jsonify, request
 
-from sync_web.daemon_client import DaemonClient, DaemonNotRunningError, DaemonError
-from sync_web.tomlio import dict_to_toml, toml_to_dict
+from syncui.daemon_client import DaemonClient, DaemonNotRunningError, DaemonError
+from syncui.tomlio import dict_to_toml, toml_to_dict
 
 # Provider schemas embedded here so the UI works even when the daemon is down.
 _PROVIDER_SCHEMAS: dict[str, dict] = {

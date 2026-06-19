@@ -6,7 +6,7 @@ from typing import Any
 
 import httpx
 
-from sync_web.ipc import default_socket_address, make_transport, base_url
+from syncui.ipc import default_socket_address, make_transport, base_url
 
 
 class DaemonNotRunningError(Exception):

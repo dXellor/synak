@@ -4,8 +4,8 @@
 {% block content %}
 <div class="toolbar">
   <div class="mode-toggle" role="group" aria-label="Editor mode">
-    <button id="btn-raw" class="mode-btn active" data-mode="raw">Raw TOML</button>
-    <button id="btn-friendly" class="mode-btn" data-mode="friendly">Friendly</button>
+    <button id="btn-friendly" class="mode-btn active" data-mode="friendly">Web Form</button>
+    <button id="btn-raw" class="mode-btn" data-mode="raw">Raw TOML</button>
   </div>
   <div class="toolbar-actions">
     <span id="save-note" class="save-note">Changes apply in-memory only — lost on daemon restart.</span>
@@ -15,11 +15,11 @@
 
 <div id="flash" class="flash" style="display:none"></div>
 
-<div id="editor-raw" class="editor-pane">
-  <textarea id="raw-textarea" spellcheck="false" placeholder="Loading config…"></textarea>
+<div id="editor-friendly" class="editor-pane">
+  <div id="friendly-form"></div>
 </div>
 
-<div id="editor-friendly" class="editor-pane" style="display:none">
-  <div id="friendly-form"></div>
+<div id="editor-raw" class="editor-pane" style="display:none">
+  <textarea id="raw-textarea" spellcheck="false" placeholder="Loading config…"></textarea>
 </div>
 {% endblock %}

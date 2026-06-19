@@ -1,7 +1,7 @@
 /* sync-web — vanilla JS, no framework */
 
 // ── State ──────────────────────────────────────────────────────────────────
-let currentMode = "raw";       // "raw" | "friendly"
+let currentMode = "friendly";  // "friendly" | "raw"
 let currentConfig = null;      // last successfully loaded config dict
 let schemas = {};              // provider schemas from /api/schemas
 
