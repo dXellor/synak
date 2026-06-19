@@ -9,9 +9,6 @@ from typing import Any
 
 def dict_to_toml(data: dict[str, Any]) -> str:
     """Convert a syncd config dict (from GET /config) to a TOML string."""
-    # The daemon emits lists for exclude/peers static; tomli_w handles those fine.
-    # PairConfig.exclude comes as a list from dataclasses.asdict.
-    # We need to convert any tuple values (shouldn't happen via JSON but guard anyway).
     data = _sanitize(data)
     return tomli_w.dumps(data)
 
@@ -25,9 +22,18 @@ def toml_to_dict(toml_str: str) -> dict[str, Any]:
 
 
 def _sanitize(obj: Any) -> Any:
-    """Recursively convert tuples to lists and drop None values for tomli_w."""
+    """Recursively convert tuples to lists; drop None values and empty lists/dicts."""
     if isinstance(obj, dict):
-        return {k: _sanitize(v) for k, v in obj.items() if v is not None}
+        result = {}
+        for k, v in obj.items():
+            cleaned = _sanitize(v)
+            # Drop None, empty lists, and empty dicts — they're just parsed defaults
+            if cleaned is None:
+                continue
+            if isinstance(cleaned, (list, dict)) and len(cleaned) == 0:
+                continue
+            result[k] = cleaned
+        return result
     if isinstance(obj, (list, tuple)):
         return [_sanitize(item) for item in obj]
     return obj
