@@ -13,10 +13,13 @@
   </div>
 </div>
 
+<hr class="pair-divider">
+
 {# — Pairs — #}
 <div id="pairs-wrap">
 {% for pair in config.pairs %}
   {% set idx = loop.index0 %}
+  {% if not loop.first %}<hr class="pair-divider">{% endif %}
   <div class="section-card pair-card" data-pair-idx="{{ idx }}">
     <div class="section-header">
       <span>Pair{% if pair.id %}: {{ pair.id }}{% endif %}</span>
@@ -34,7 +37,7 @@
       {% endcall %}
       {% call field_row("mode", required=true) %}
         <div class="radio-group" onchange="onModeChange(event, this.closest('.pair-card'))">
-          {% for m in ["client-server", "p2p"] %}
+          {% for m in ["client-server", "p2p", "external"] %}
           <label>
             <input type="radio" name="pairs.{{ idx }}.mode" value="{{ m }}"{% if m == pair.mode %} checked{% endif %}>
             {{ m }}

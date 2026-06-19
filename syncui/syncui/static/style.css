@@ -341,6 +341,15 @@ input[type="checkbox"] {
 .btn-add-row:hover { border-color: var(--accent); }
 
 /* Pair card extras */
+#pairs-wrap { display: flex; flex-direction: column; gap: 0; }
+
+.pair-divider {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 20px 0;
+  opacity: 0.6;
+}
+
 .pair-card { position: relative; }
 .pair-card .section-header { display: flex; justify-content: space-between; align-items: center; }
 .btn-remove-pair {

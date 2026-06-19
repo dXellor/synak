@@ -125,6 +125,9 @@ async function applyConfig() {
 // ── Dynamic pairs ──────────────────────────────────────────────────────────
 function addPair() {
   const wrap = document.getElementById("pairs-wrap");
+  if (wrap.querySelector(".pair-card")) {
+    wrap.insertAdjacentHTML("beforeend", `<hr class="pair-divider">`);
+  }
   wrap.insertAdjacentHTML("beforeend", renderPairCardHTML(pairCounter, defaultPair()));
   bindPairCard(wrap.lastElementChild);
   pairCounter++;
@@ -150,7 +153,7 @@ function onModeChange(e, card) {
 }
 
 function renderPairCardHTML(idx, pair) {
-  const modes = ["client-server", "p2p"];
+  const modes = ["client-server", "p2p", "external"];
   const dirs  = ["push", "pull", "bidirectional"];
   return `
 <div class="section-card pair-card" data-pair-idx="${idx}">

@@ -37,6 +37,14 @@ _PROVIDER_SCHEMAS: dict[str, dict] = {
             "verify_sleep": {"type": "number", "description": "Seconds between per-file hashes during verify. Default 0.1."},
         },
     },
+    "external": {
+        "required": ["binary"],
+        "properties": {
+            "binary":  {"type": "string", "description": "Path to the external provider binary"},
+            "peers":   {"type": "array", "items": {"type": "string"}, "description": "Peer addresses as 'host' or 'host:port'"},
+            "node_id": {"type": "string", "description": "Human-readable node name"},
+        },
+    },
 }
 
 
