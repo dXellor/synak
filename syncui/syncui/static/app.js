@@ -12,7 +12,30 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("btn-apply")?.addEventListener("click", applyConfig);
   document.getElementById("btn-add-pair")?.addEventListener("click", addPair);
   document.getElementById("btn-add-peer")?.addEventListener("click", addStaticPeer);
+  setupConnPopover();
 });
+
+function setupConnPopover() {
+  const trigger  = document.getElementById("conn-trigger");
+  const popover  = document.getElementById("conn-popover");
+  if (!trigger || !popover) return;
+
+  trigger.addEventListener("click", (e) => {
+    e.stopPropagation();
+    popover.hidden = !popover.hidden;
+    if (!popover.hidden) popover.querySelector("input")?.focus();
+  });
+
+  document.addEventListener("click", (e) => {
+    if (!document.getElementById("header-conn").contains(e.target)) {
+      popover.hidden = true;
+    }
+  });
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") popover.hidden = true;
+  });
+}
 
 // ── Mode toggle ────────────────────────────────────────────────────────────
 async function switchMode(mode) {

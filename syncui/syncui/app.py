@@ -2,8 +2,10 @@ from flask import Flask
 
 
 def create_app(socket_path: str | None = None) -> Flask:
+    import os
     app = Flask(__name__)
-    app.config["DAEMON_SOCKET"] = socket_path
+    app.secret_key = os.environ.get("SYNCUI_SECRET", os.urandom(24))
+    app.config["DAEMON_SOCKET_DEFAULT"] = socket_path  # CLI-provided default
 
     from syncui import routes
     routes.register(app)

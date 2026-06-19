@@ -8,7 +8,25 @@
 </head>
 <body>
   <header>
-    <h1>syncd</h1>
+    <div class="header-conn" id="header-conn">
+      <button class="conn-trigger" id="conn-trigger" type="button">
+        <span class="conn-title">SyncUI</span>
+        {% if current_socket is defined %}
+        <span class="conn-addr">{{ current_socket }}</span>
+        {% endif %}
+      </button>
+      <div class="conn-popover" id="conn-popover" hidden>
+        <form method="post" action="/connect">
+          <label class="conn-label">Socket / host:port</label>
+          <div class="conn-row">
+            <input class="conn-input" type="text" name="address"
+              value="{{ current_socket if current_socket is defined else '' }}"
+              placeholder="/run/user/1000/syncd.sock">
+            <button class="btn-primary" type="submit">Connect</button>
+          </div>
+        </form>
+      </div>
+    </div>
     {% block daemon_badge %}
     <span id="daemon-badge" class="badge badge-unknown">checking…</span>
     {% endblock %}

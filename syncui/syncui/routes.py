@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import json as _json
 
-from flask import Flask, current_app, jsonify, render_template, request
+from flask import Flask, current_app, jsonify, redirect, render_template, request, session, url_for
 
 from syncui.daemon_client import DaemonClient, DaemonNotRunningError, DaemonError
+from syncui.ipc import default_socket_address
 from syncui.tomlio import dict_to_toml, toml_to_dict
 
 # Provider schemas embedded here so the UI works even when the daemon is down.
@@ -39,18 +40,36 @@ _PROVIDER_SCHEMAS: dict[str, dict] = {
 }
 
 
+def _socket_address() -> str:
+    return (
+        session.get("daemon_socket")
+        or current_app.config.get("DAEMON_SOCKET_DEFAULT")
+        or default_socket_address()
+    )
+
+
 def _client() -> DaemonClient:
-    return DaemonClient(current_app.config.get("DAEMON_SOCKET"))
+    return DaemonClient(_socket_address())
 
 
 def register(app: Flask) -> None:
     app.add_url_rule("/", view_func=index)
+    app.add_url_rule("/connect", view_func=connect, methods=["POST"])
     app.add_url_rule("/fragment/form", view_func=fragment_form, methods=["POST"])
     app.add_url_rule("/api/config", view_func=api_config_get, methods=["GET"])
     app.add_url_rule("/api/config", view_func=api_config_post, methods=["POST"])
     app.add_url_rule("/api/convert", view_func=api_convert, methods=["POST"])
     app.add_url_rule("/api/status", view_func=api_status, methods=["GET"])
     app.add_url_rule("/api/schemas", view_func=api_schemas, methods=["GET"])
+
+
+def connect():
+    address = request.form.get("address", "").strip()
+    if address:
+        session["daemon_socket"] = address
+    else:
+        session.pop("daemon_socket", None)
+    return redirect(url_for("index"))
 
 
 def index():
@@ -76,6 +95,7 @@ def index():
         schemas_json=_json.dumps(_PROVIDER_SCHEMAS),
         daemon_down=daemon_down,
         daemon_error=daemon_error,
+        current_socket=_socket_address(),
     )
 
 

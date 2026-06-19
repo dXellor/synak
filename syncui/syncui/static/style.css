@@ -35,12 +35,83 @@ header {
   border-bottom: 1px solid var(--border);
 }
 
-header h1 {
-  font-size: 16px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  color: var(--text);
+/* ── Connection popover ── */
+.header-conn { position: relative; }
+
+.conn-trigger {
+  background: none;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+  padding: 4px 8px;
+  border-radius: var(--radius);
+  transition: background 0.15s;
 }
+.conn-trigger:hover { background: var(--surface2); }
+
+.conn-title {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+  line-height: 1;
+}
+
+.conn-addr {
+  font-size: 11px;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1;
+}
+
+.conn-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 100;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px;
+  width: 380px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+}
+.conn-popover[hidden] { display: none; }
+
+.conn-label {
+  display: block;
+  font-size: 11px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 8px;
+}
+
+.conn-row {
+  display: flex;
+  gap: 8px;
+}
+
+.conn-input {
+  flex: 1;
+  background: var(--surface2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 6px 10px;
+  font-size: 13px;
+  font-family: var(--font-mono);
+  outline: none;
+  transition: border-color 0.15s;
+}
+.conn-input:focus { border-color: var(--accent); }
 
 /* ── Badges ── */
 .badge {
