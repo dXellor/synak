@@ -1,0 +1,210 @@
+{% extends "base.html" %}
+{% block title %}syncd — status{% endblock %}
+
+{% block daemon_badge %}
+  {% if daemon_error %}
+    <span id="daemon-badge" class="badge badge-down">down</span>
+  {% else %}
+    <span id="daemon-badge" class="badge badge-running">running</span>
+  {% endif %}
+{% endblock %}
+
+{% block daemon_banner %}
+  {% if daemon_error %}
+    <div class="banner banner-error">{{ daemon_error }}</div>
+  {% endif %}
+{% endblock %}
+
+{% block content %}
+
+<div class="toolbar">
+  {% if daemon_status %}
+  <div class="status-meta" style="margin-left:0" id="status-meta">
+    <span class="meta-item">v{{ daemon_status.version }}</span>
+    <span class="meta-sep">·</span>
+    <span class="meta-item">up <span id="uptime-display">—</span></span>
+  </div>
+  <script>
+    const _bootTs = Date.now() / 1000 - {{ daemon_status.uptime }};
+  </script>
+  {% endif %}
+</div>
+
+<div id="flash" class="flash" style="display:none"></div>
+
+{% if not daemon_error %}
+  {% if pairs %}
+  <div class="pairs-status-list">
+    {% for pair in pairs %}
+    {% set s = pair.status %}
+    <div class="section-card pair-status-card" data-pair-id="{{ pair.id }}">
+      <div class="section-header pair-status-header">
+        <div class="pair-status-title">
+          <span class="pair-id">{{ pair.id }}</span>
+          {% if s %}
+            {% if s.state == "running" %}
+              <span class="badge badge-running">running</span>
+            {% elif s.state == "paused" %}
+              <span class="badge badge-paused">paused</span>
+            {% elif s.state == "error" %}
+              <span class="badge badge-error">error</span>
+            {% elif s.state == "idle" %}
+              <span class="badge badge-idle">idle</span>
+            {% else %}
+              <span class="badge badge-unknown">{{ s.state }}</span>
+            {% endif %}
+          {% else %}
+            <span class="badge badge-unknown">unknown</span>
+          {% endif %}
+        </div>
+        <div class="pair-status-actions">
+          {% if s and s.state == "paused" %}
+          <button class="btn-action btn-resume" data-pair-id="{{ pair.id }}" type="button">Resume</button>
+          {% else %}
+          <button class="btn-action btn-pause" data-pair-id="{{ pair.id }}" type="button">Pause</button>
+          {% endif %}
+          <button class="btn-action btn-sync" data-pair-id="{{ pair.id }}" type="button">Sync now</button>
+        </div>
+      </div>
+      <div class="section-body pair-status-body">
+        <div class="status-detail-grid">
+          <span class="sd-label">local</span>
+          <span class="sd-value mono">{{ pair.local }}</span>
+
+          <span class="sd-label">mode</span>
+          <span class="sd-value">{{ pair.mode }}</span>
+
+          <span class="sd-label">direction</span>
+          <span class="sd-value">{{ pair.direction }}</span>
+
+          {% if s and s.last_sync %}
+          <span class="sd-label">last sync</span>
+          <span class="sd-value" data-ts="{{ s.last_sync }}">—</span>
+          {% endif %}
+
+          {% if s and s.error %}
+          <span class="sd-label">error</span>
+          <span class="sd-value sd-error">{{ s.error }}</span>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="empty-state">No pairs configured. <a href="{{ url_for('index') }}">Add one in Config.</a></div>
+  {% endif %}
+{% endif %}
+
+<script>
+document.querySelectorAll(".btn-sync").forEach(btn => {
+  btn.addEventListener("click", async () => {
+    const id = btn.dataset.pairId;
+    btn.disabled = true;
+    try {
+      await apiPost(`/api/pairs/${encodeURIComponent(id)}/sync`, {});
+      flash("success", `Sync triggered for "${id}".`);
+    } catch (e) {
+      flash("error", e.message);
+    } finally {
+      btn.disabled = false;
+    }
+  });
+});
+
+document.querySelectorAll(".btn-pause").forEach(btn => {
+  btn.addEventListener("click", async () => {
+    const id = btn.dataset.pairId;
+    btn.disabled = true;
+    try {
+      await apiPost(`/api/pairs/${encodeURIComponent(id)}/pause`, {});
+      flash("success", `Pair "${id}" paused.`);
+      setTimeout(() => location.reload(), 800);
+    } catch (e) {
+      flash("error", e.message);
+      btn.disabled = false;
+    }
+  });
+});
+
+document.querySelectorAll(".btn-resume").forEach(btn => {
+  btn.addEventListener("click", async () => {
+    const id = btn.dataset.pairId;
+    btn.disabled = true;
+    try {
+      await apiPost(`/api/pairs/${encodeURIComponent(id)}/resume`, {});
+      flash("success", `Pair "${id}" resumed.`);
+      setTimeout(() => location.reload(), 800);
+    } catch (e) {
+      flash("error", e.message);
+      btn.disabled = false;
+    }
+  });
+});
+
+// ── Time helpers ───────────────────────────────────────────────────────────
+function fmtUptime(secs) {
+  secs = Math.floor(secs);
+  const d = Math.floor(secs / 86400);
+  const h = Math.floor((secs % 86400) / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  const s = secs % 60;
+  if (d > 0) return `${d}d ${h}h ${m}m`;
+  if (h > 0) return `${h}h ${m}m`;
+  if (m > 0) return `${m}m ${s}s`;
+  return `${s}s`;
+}
+
+function fmtRelative(ts) {
+  const diff = Math.round(Date.now() / 1000 - ts);
+  if (diff < 5)         return "just now";
+  if (diff < 60)        return `${diff}s ago`;
+  if (diff < 3600)      return `${Math.round(diff / 60)}m ago`;
+  return `${Math.round(diff / 3600)}h ago`;
+}
+
+function tickUptime() {
+  const el = document.getElementById("uptime-display");
+  if (el && typeof _bootTs !== "undefined") {
+    el.textContent = fmtUptime(Date.now() / 1000 - _bootTs);
+  }
+}
+
+function refreshTimestamps() {
+  document.querySelectorAll("[data-ts]").forEach(el => {
+    const ts = parseFloat(el.dataset.ts);
+    if (ts) el.textContent = fmtRelative(ts);
+  });
+}
+
+// ── Poll /api/status every 10s to update uptime + last-sync times ──────────
+async function pollStatus() {
+  try {
+    const data = await fetch("/api/status").then(r => r.json());
+    if (data.uptime !== undefined) {
+      // Recalculate boot time from fresh uptime
+      window._bootTs = Date.now() / 1000 - data.uptime;
+      tickUptime();
+    }
+    // Update last-sync timestamps per pair
+    if (Array.isArray(data.pairs)) {
+      data.pairs.forEach(p => {
+        const card = document.querySelector(`.pair-status-card[data-pair-id="${CSS.escape(p.pair_id)}"]`);
+        if (!card) return;
+        const tsEl = card.querySelector("[data-ts]");
+        if (tsEl && p.last_sync) {
+          tsEl.dataset.ts = p.last_sync;
+          tsEl.textContent = fmtRelative(p.last_sync);
+        }
+      });
+    }
+  } catch (_) { /* silent — daemon may be down */ }
+}
+
+// Initial render
+tickUptime();
+refreshTimestamps();
+setInterval(tickUptime, 1000);
+setInterval(pollStatus, 10000);
+</script>
+{% endblock %}

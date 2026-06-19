@@ -11,8 +11,22 @@ document.addEventListener("DOMContentLoaded", () => {
   );
   document.getElementById("btn-apply")?.addEventListener("click", applyConfig);
   document.getElementById("btn-add-pair")?.addEventListener("click", addPair);
+  document.getElementById("btn-reload-config")?.addEventListener("click", reloadConfigFromDisk);
   setupConnPopover();
 });
+
+async function reloadConfigFromDisk() {
+  const btn = document.getElementById("btn-reload-config");
+  btn.disabled = true;
+  try {
+    await apiPost("/api/config/reload", {});
+    flash("success", "Config reloaded from disk.");
+    setTimeout(() => location.reload(), 800);
+  } catch (e) {
+    flash("error", e.message);
+    btn.disabled = false;
+  }
+}
 
 function setupConnPopover() {
   const trigger  = document.getElementById("conn-trigger");

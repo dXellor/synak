@@ -30,6 +30,10 @@
     {% block daemon_badge %}
     <span id="daemon-badge" class="badge badge-unknown">checking…</span>
     {% endblock %}
+    <nav class="header-nav">
+      <a href="{{ url_for('status_page') }}" class="nav-link{% if request.endpoint == 'status_page' %} active{% endif %}">Status</a>
+      <a href="{{ url_for('index') }}" class="nav-link{% if request.endpoint == 'index' %} active{% endif %}">Config</a>
+    </nav>
   </header>
 
   {% block daemon_banner %}{% endblock %}

@@ -54,6 +54,7 @@ def _client() -> DaemonClient:
 
 def register(app: Flask) -> None:
     app.add_url_rule("/", view_func=index)
+    app.add_url_rule("/status", view_func=status_page)
     app.add_url_rule("/connect", view_func=connect, methods=["POST"])
     app.add_url_rule("/fragment/form", view_func=fragment_form, methods=["POST"])
     app.add_url_rule("/api/config", view_func=api_config_get, methods=["GET"])
@@ -61,6 +62,10 @@ def register(app: Flask) -> None:
     app.add_url_rule("/api/convert", view_func=api_convert, methods=["POST"])
     app.add_url_rule("/api/status", view_func=api_status, methods=["GET"])
     app.add_url_rule("/api/schemas", view_func=api_schemas, methods=["GET"])
+    app.add_url_rule("/api/pairs/<pair_id>/sync", view_func=api_pair_sync, methods=["POST"])
+    app.add_url_rule("/api/pairs/<pair_id>/pause", view_func=api_pair_pause, methods=["POST"])
+    app.add_url_rule("/api/pairs/<pair_id>/resume", view_func=api_pair_resume, methods=["POST"])
+    app.add_url_rule("/api/config/reload", view_func=api_config_reload, methods=["POST"])
 
 
 def connect():
@@ -191,3 +196,68 @@ def api_convert():
 
 def api_schemas():
     return jsonify(_PROVIDER_SCHEMAS)
+
+
+def status_page():
+    daemon_error = None
+    daemon_down = False
+    pairs = []
+    daemon_status = None
+
+    try:
+        daemon_status = _client().get("/status")
+        pairs = _client().get("/pairs")
+    except DaemonNotRunningError as e:
+        daemon_down = True
+        daemon_error = str(e)
+    except DaemonError as e:
+        daemon_error = str(e)
+
+    return render_template(
+        "status.html",
+        daemon_status=daemon_status,
+        pairs=pairs,
+        daemon_down=daemon_down,
+        daemon_error=daemon_error,
+        current_socket=_socket_address(),
+    )
+
+
+def api_pair_sync(pair_id: str):
+    try:
+        _client().post(f"/pairs/{pair_id}/sync", body={})
+        return jsonify({})
+    except DaemonNotRunningError as e:
+        return jsonify({"error": str(e), "daemon_down": True}), 503
+    except DaemonError as e:
+        return jsonify({"error": str(e)}), e.status
+
+
+def api_pair_pause(pair_id: str):
+    try:
+        _client().post(f"/pairs/{pair_id}/pause", body={})
+        return jsonify({})
+    except DaemonNotRunningError as e:
+        return jsonify({"error": str(e), "daemon_down": True}), 503
+    except DaemonError as e:
+        return jsonify({"error": str(e)}), e.status
+
+
+def api_pair_resume(pair_id: str):
+    try:
+        _client().post(f"/pairs/{pair_id}/resume", body={})
+        return jsonify({})
+    except DaemonNotRunningError as e:
+        return jsonify({"error": str(e), "daemon_down": True}), 503
+    except DaemonError as e:
+        return jsonify({"error": str(e)}), e.status
+
+
+def api_config_reload():
+    try:
+        _client().post("/config/reload", body={})
+        return jsonify({})
+    except DaemonNotRunningError as e:
+        return jsonify({"error": str(e), "daemon_down": True}), 503
+    except DaemonError as e:
+        return jsonify({"error": str(e)}), e.status

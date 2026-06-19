@@ -25,6 +25,9 @@
   </div>
   <div class="toolbar-actions">
     <span class="save-note">Changes apply in-memory only — lost on daemon restart.</span>
+    {% if not daemon_down %}
+    <button id="btn-reload-config" class="btn-secondary" type="button">Reload from disk</button>
+    {% endif %}
     <button id="btn-apply" class="btn-primary">Apply</button>
   </div>
 </div>
