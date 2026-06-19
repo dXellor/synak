@@ -63,29 +63,4 @@
 
 <button type="button" class="btn-add-pair" id="btn-add-pair">+ Add pair</button>
 
-{# — Peers — #}
-<div class="section-card">
-  <div class="section-header">Peers</div>
-  <div class="section-body">
-    {% call field_row("discovery") %}
-      {{ select_field("peers.discovery", ["static"], config.peers.discovery) }}
-    {% endcall %}
-    <div class="field-row">
-      <div class="field-label" style="font-weight:600">static peers</div>
-      <div class="field-input">
-        <div id="static-peers-wrap">
-          {% for peer in config.peers.static %}
-          <div class="static-peer-row array-row">
-            <input type="text" name="peers.static.{{ loop.index0 }}.id"
-                   value="{{ peer.id }}" placeholder="peer-id" style="flex:1">
-            <input type="text" name="peers.static.{{ loop.index0 }}.address"
-                   value="{{ peer.address }}" placeholder="192.168.1.42:5000" style="flex:2">
-            <button type="button" class="btn-icon" onclick="this.closest('.static-peer-row').remove()">×</button>
-          </div>
-          {% endfor %}
-        </div>
-        <button type="button" class="btn-add-row" id="btn-add-peer" style="margin-top:4px">+ Add static peer</button>
-      </div>
-    </div>
-  </div>
-</div>
+{# — Peers section hidden: [peers] is not used by any provider yet — #}

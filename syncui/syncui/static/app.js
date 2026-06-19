@@ -11,7 +11,6 @@ document.addEventListener("DOMContentLoaded", () => {
   );
   document.getElementById("btn-apply")?.addEventListener("click", applyConfig);
   document.getElementById("btn-add-pair")?.addEventListener("click", addPair);
-  document.getElementById("btn-add-peer")?.addEventListener("click", addStaticPeer);
   setupConnPopover();
 });
 
@@ -83,7 +82,6 @@ async function reloadForm(cfg) {
   pairCounter = document.querySelectorAll(".pair-card").length;
   bindDynamicPairs();
   document.getElementById("btn-add-pair")?.addEventListener("click", addPair);
-  document.getElementById("btn-add-peer")?.addEventListener("click", addStaticPeer);
 }
 
 // ── Apply ──────────────────────────────────────────────────────────────────
@@ -186,17 +184,6 @@ function renderProviderSectionHTML(idx, mode, provider) {
   return `<div class="section-card"><div class="section-header">Provider (${mode})</div><div class="section-body">${rows}</div></div>`;
 }
 
-// ── Static peer rows ───────────────────────────────────────────────────────
-function addStaticPeer() {
-  const wrap = document.getElementById("static-peers-wrap");
-  const idx  = wrap.querySelectorAll(".static-peer-row").length;
-  wrap.insertAdjacentHTML("beforeend", `
-<div class="static-peer-row array-row">
-  <input type="text" name="peers.static.${idx}.id" placeholder="peer-id" style="flex:1">
-  <input type="text" name="peers.static.${idx}.address" placeholder="192.168.1.42:5000" style="flex:2">
-  <button type="button" class="btn-icon" onclick="this.closest('.static-peer-row').remove()">×</button>
-</div>`);
-}
 
 // ── Collect form → config dict ─────────────────────────────────────────────
 function collectFriendly() {
@@ -206,7 +193,7 @@ function collectFriendly() {
       log_level:  val("daemon.log_level"),
     },
     pairs: [],
-    peers: { discovery: val("peers.discovery") || "static", static: [] },
+    peers: { discovery: "static", static: [] },
   };
 
   document.querySelectorAll(".pair-card").forEach(card => {
@@ -222,12 +209,6 @@ function collectFriendly() {
       exclude:   collectArray(p("exclude"), card),
       provider:  collectProvider(card, idx, mode),
     });
-  });
-
-  document.querySelectorAll(".static-peer-row").forEach((row, i) => {
-    const id      = row.querySelector(`[name="peers.static.${i}.id"]`)?.value.trim();
-    const address = row.querySelector(`[name="peers.static.${i}.address"]`)?.value.trim();
-    if (id || address) cfg.peers.static.push({ id: id || "", address: address || "" });
   });
 
   return cfg;
