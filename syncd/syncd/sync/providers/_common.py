@@ -41,6 +41,9 @@ class BaseSyncProvider(SyncProvider):
         self._index: FileIndex | None = None
         self._node_id: str = ""
         self._conflict_strategy: str = "keep-both"
+        # Paths seen as remotely deleted once but not yet confirmed — deferred one round
+        # to avoid deleting files mid-move when the watcher hasn't indexed the new path yet.
+        self._pending_deletes: set[str] = set()
 
     async def _init_index(self, context: SyncContext) -> None:
         self._index = FileIndex(context.local, self._node_id, extra_excludes=context.exclude)
@@ -205,11 +208,20 @@ class BaseSyncProvider(SyncProvider):
                 continue
             local_entry = self._index.get(path)
             if local_entry is None or local_entry.deleted:
+                self._pending_deletes.discard(path)
                 continue
             new_path = remote_live_by_checksum.get(local_entry.checksum)
             if new_path and new_path != path:
+                self._pending_deletes.discard(path)
                 continue  # rename incoming — skip deletion
             if reconcile(local_entry, remote_entry, self._node_id) == Action.ACCEPT_REMOTE:
+                if path not in self._pending_deletes:
+                    # Defer by one round: a move whose create event hasn't landed yet
+                    # would look identical to a genuine delete at this moment.
+                    self._pending_deletes.add(path)
+                    logger.debug("Deferring deletion of %r — confirming next round", path)
+                    continue
+                self._pending_deletes.discard(path)
                 await asyncio.to_thread(self._index.apply_remote, remote_entry, None)
                 logger.info("Applied remote deletion of %r from %s", path, label)
 
