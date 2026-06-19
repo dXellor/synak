@@ -66,6 +66,7 @@ def register(app: Flask) -> None:
     app.add_url_rule("/api/pairs/<pair_id>/pause", view_func=api_pair_pause, methods=["POST"])
     app.add_url_rule("/api/pairs/<pair_id>/resume", view_func=api_pair_resume, methods=["POST"])
     app.add_url_rule("/api/config/reload", view_func=api_config_reload, methods=["POST"])
+    app.add_url_rule("/api/config/save", view_func=api_config_save, methods=["POST"])
 
 
 def connect():
@@ -256,6 +257,16 @@ def api_pair_resume(pair_id: str):
 def api_config_reload():
     try:
         _client().post("/config/reload", body={})
+        return jsonify({})
+    except DaemonNotRunningError as e:
+        return jsonify({"error": str(e), "daemon_down": True}), 503
+    except DaemonError as e:
+        return jsonify({"error": str(e)}), e.status
+
+
+def api_config_save():
+    try:
+        _client().post("/config/save", body={})
         return jsonify({})
     except DaemonNotRunningError as e:
         return jsonify({"error": str(e), "daemon_down": True}), 503

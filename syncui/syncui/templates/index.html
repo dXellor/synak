@@ -24,7 +24,6 @@
     <button id="btn-raw"      class="mode-btn"        data-mode="raw">Raw TOML</button>
   </div>
   <div class="toolbar-actions">
-    <span class="save-note">Changes apply in-memory only — lost on daemon restart.</span>
     {% if not daemon_down %}
     <button id="btn-reload-config" class="btn-secondary" type="button">Reload from disk</button>
     {% endif %}

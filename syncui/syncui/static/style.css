@@ -180,11 +180,6 @@ main {
   margin-left: auto;
 }
 
-.save-note {
-  font-size: 12px;
-  color: var(--text-dim);
-  font-style: italic;
-}
 
 .btn-primary {
   background: #1a3d2b;

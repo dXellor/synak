@@ -13,6 +13,7 @@ def build_routes() -> list[web.RouteDef]:
         web.get("/status", handle_status),
         web.get("/config", handle_config),
         web.post("/config/reload", handle_config_reload),
+        web.post("/config/save", handle_config_save),
         web.post("/config/apply", handle_config_apply),
         web.get("/pairs", handle_pairs),
         web.post("/pairs/{id}/sync", handle_pair_sync),
@@ -61,6 +62,17 @@ async def handle_config_reload(request: web.Request) -> web.Response:
     daemon = _state(request)["daemon"]
     import asyncio
     asyncio.get_running_loop().create_task(daemon._reload_config())
+    return _json({})
+
+
+async def handle_config_save(request: web.Request) -> web.Response:
+    daemon = _state(request)["daemon"]
+    try:
+        await daemon.save_config()
+    except RuntimeError as e:
+        return _error(str(e), status=409)
+    except Exception as e:
+        return _error(str(e), status=500)
     return _json({})
 
 

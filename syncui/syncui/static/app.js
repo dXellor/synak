@@ -110,10 +110,11 @@ async function applyConfig() {
       body = { json: collectFriendly() };
     }
     const data = await apiPost("/api/config", body);
+    await apiPost("/api/config/save", {});
     document.getElementById("raw-textarea").value = data.toml || "";
     // Reload form with the canonicalized config the daemon returned
     if (currentMode === "friendly") await reloadForm(data.json);
-    flash("success", "Config applied.");
+    flash("success", "Config applied and saved.");
   } catch (e) {
     flash("error", e.message);
   } finally {

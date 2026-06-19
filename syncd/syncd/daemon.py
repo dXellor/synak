@@ -81,6 +81,24 @@ class Daemon:
 
         logger.info("Config applied via API")
 
+    async def save_config(self) -> None:
+        """Serialize the current in-memory config back to the config file on disk."""
+        if not self._config_path:
+            raise RuntimeError("No config file path set — daemon was started without -c")
+        import tomli_w
+        raw = dataclasses.asdict(self._config)
+        # Convert tuples (e.g. exclude) back to lists for TOML serialization
+        def _fix(obj):
+            if isinstance(obj, dict):
+                return {k: _fix(v) for k, v in obj.items()}
+            if isinstance(obj, (list, tuple)):
+                return [_fix(i) for i in obj]
+            return obj
+        raw = _fix(raw)
+        with open(self._config_path, "wb") as f:
+            tomli_w.dump(raw, f)
+        logger.info("Config saved to %s", self._config_path)
+
     async def _reload_config(self) -> None:
         if not self._config_path:
             logger.warning("No config path set, cannot reload")
