@@ -45,6 +45,7 @@ def register(app: Flask) -> None:
     app.add_url_rule("/", view_func=index)
     app.add_url_rule("/api/config", view_func=api_config_get, methods=["GET"])
     app.add_url_rule("/api/config", view_func=api_config_post, methods=["POST"])
+    app.add_url_rule("/api/convert", view_func=api_convert, methods=["POST"])
     app.add_url_rule("/api/status", view_func=api_status, methods=["GET"])
     app.add_url_rule("/api/schemas", view_func=api_schemas, methods=["GET"])
 
@@ -109,6 +110,26 @@ def api_status():
         return jsonify({"error": str(e), "daemon_down": True}), 503
     except DaemonError as e:
         return jsonify({"error": str(e)}), e.status
+
+
+def api_convert():
+    """Convert between JSON dict and TOML string without touching the daemon."""
+    body = request.get_json(silent=True)
+    if not body:
+        return jsonify({"error": "request body must be JSON"}), 400
+    if "toml" in body:
+        try:
+            d = toml_to_dict(body["toml"])
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 422
+        return jsonify({"json": d})
+    if "json" in body:
+        try:
+            t = dict_to_toml(body["json"])
+        except Exception as e:
+            return jsonify({"error": str(e)}), 422
+        return jsonify({"toml": t})
+    return jsonify({"error": "body must contain 'toml' or 'json' key"}), 400
 
 
 def api_schemas():

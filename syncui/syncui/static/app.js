@@ -19,24 +19,30 @@ function setupModeToggle() {
   });
 }
 
-function switchMode(mode) {
+async function switchMode(mode) {
   if (mode === currentMode) return;
 
-  // If leaving raw mode, try to parse the textarea so edits carry over.
-  if (currentMode === "raw" && mode === "friendly") {
-    const toml = document.getElementById("raw-textarea").value;
-    if (toml.trim()) {
-      applyTomlToState(toml).catch(() => {
-        // Parse failed — stay in raw and show error (applyTomlToState already flashed it)
-        return;
-      }).then(ok => {
-        if (ok !== false) activateMode(mode);
-      });
+  if (currentMode === "friendly") {
+    // Snapshot form into currentConfig before leaving so raw gets the latest edits.
+    currentConfig = collectFriendly();
+    try {
+      document.getElementById("raw-textarea").value = await configToToml(currentConfig);
+    } catch (e) {
+      flash("error", `Cannot convert to TOML: ${e.message}`);
       return;
     }
+    activateMode(mode);
+  } else {
+    // Leaving raw — try to parse textarea so form gets the latest edits.
+    const toml = document.getElementById("raw-textarea").value.trim();
+    if (!toml) { activateMode(mode); return; }
+    try {
+      currentConfig = await parseToml(toml);
+      activateMode(mode);
+    } catch (e) {
+      flash("error", `Cannot switch: ${e.message}`);
+    }
   }
-
-  activateMode(mode);
 }
 
 function activateMode(mode) {
@@ -48,9 +54,6 @@ function activateMode(mode) {
   document.getElementById("editor-friendly").style.display = mode === "friendly" ? "" : "none";
 
   if (mode === "friendly" && currentConfig) renderFriendly(currentConfig);
-  if (mode === "raw" && currentConfig) {
-    // Re-sync textarea from current in-memory config (might have been updated via friendly)
-  }
 }
 
 // ── Load ───────────────────────────────────────────────────────────────────
@@ -110,16 +113,14 @@ async function applyConfig() {
   }
 }
 
-async function applyTomlToState(toml) {
-  try {
-    const data = await apiPost("/api/config", { toml });
-    currentConfig = data.json;
-    document.getElementById("raw-textarea").value = data.toml;
-    return true;
-  } catch (err) {
-    flash("error", err.message);
-    return false;
-  }
+async function configToToml(cfg) {
+  const data = await apiPost("/api/convert", { json: cfg });
+  return data.toml;
+}
+
+async function parseToml(toml) {
+  const data = await apiPost("/api/convert", { toml });
+  return data.json;
 }
 
 // ── Friendly form — render ─────────────────────────────────────────────────
