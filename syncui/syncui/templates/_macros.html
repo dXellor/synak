@@ -1,0 +1,77 @@
+{% macro field_row(label, required=false, desc=none) %}
+<div class="field-row">
+  <div class="field-label{% if required %} required{% endif %}">{{ label }}</div>
+  <div class="field-input">
+    {{ caller() }}
+    {% if desc %}<div class="field-desc">{{ desc }}</div>{% endif %}
+  </div>
+</div>
+{% endmacro %}
+
+{% macro select_field(name, options, selected) %}
+<select name="{{ name }}">
+  {% for opt in options %}
+  <option value="{{ opt }}"{% if opt == selected %} selected{% endif %}>{{ opt }}</option>
+  {% endfor %}
+</select>
+{% endmacro %}
+
+{% macro radio_group(name, options, selected) %}
+<div class="radio-group">
+  {% for opt in options %}
+  <label>
+    <input type="radio" name="{{ name }}" value="{{ opt }}"{% if opt == selected %} checked{% endif %}>
+    {{ opt }}
+  </label>
+  {% endfor %}
+</div>
+{% endmacro %}
+
+{% macro text_input(name, value, readonly=false, placeholder='') %}
+<input type="text" name="{{ name }}" value="{{ value }}"
+  {% if readonly %}readonly{% endif %}
+  {% if placeholder %}placeholder="{{ placeholder }}"{% endif %}>
+{% endmacro %}
+
+{% macro number_input(name, value, min=none) %}
+<input type="number" name="{{ name }}" value="{{ value }}"
+  {% if min is not none %}min="{{ min }}"{% endif %}
+  style="width:120px">
+{% endmacro %}
+
+{% macro array_field(name, values) %}
+<div class="array-field">
+  {% for v in values %}
+  <div class="array-row">
+    <input type="text" name="{{ name }}[]" value="{{ v }}">
+    <button type="button" class="btn-icon" onclick="this.closest('.array-row').remove()">×</button>
+  </div>
+  {% endfor %}
+  <button type="button" class="btn-add-row"
+    onclick="addArrayRow(this, '{{ name }}')">+ Add</button>
+</div>
+{% endmacro %}
+
+{% macro provider_fields(pair_idx, schema, provider, mode) %}
+{% set required = schema.get('required', []) %}
+{% for key, def in schema.get('properties', {}).items() %}
+{% set fname = 'pairs.' ~ pair_idx ~ '.provider.' ~ key %}
+{% set cur = provider.get(key) %}
+  {% call field_row(key, required=(key in required), desc=def.get('description')) %}
+    {% if def.get('enum') %}
+      {{ select_field(fname, def['enum'], cur if cur is not none else def['enum'][0]) }}
+    {% elif def.get('type') == 'boolean' %}
+      <label class="check-group">
+        <input type="checkbox" name="{{ fname }}"{% if cur != false %} checked{% endif %}>
+        enabled
+      </label>
+    {% elif def.get('type') in ('integer', 'number') %}
+      {{ number_input(fname, cur if cur is not none else 0, min=0 if def.get('type') == 'integer' else none) }}
+    {% elif def.get('type') == 'array' %}
+      {{ array_field(fname, cur or []) }}
+    {% else %}
+      {{ text_input(fname, cur or '') }}
+    {% endif %}
+  {% endcall %}
+{% endfor %}
+{% endmacro %}

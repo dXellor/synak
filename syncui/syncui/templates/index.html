@@ -1,25 +1,51 @@
 {% extends "base.html" %}
 {% block title %}syncd — config editor{% endblock %}
 
+{% block daemon_badge %}
+  {% if daemon_error %}
+    <span id="daemon-badge" class="badge badge-down">down</span>
+  {% else %}
+    <span id="daemon-badge" class="badge badge-running">running</span>
+  {% endif %}
+{% endblock %}
+
+{% block daemon_banner %}
+  {% if daemon_error %}
+    <div class="banner banner-error">{{ daemon_error }}</div>
+  {% endif %}
+{% endblock %}
+
 {% block content %}
+
+{# ── Toolbar ── #}
 <div class="toolbar">
   <div class="mode-toggle" role="group" aria-label="Editor mode">
     <button id="btn-friendly" class="mode-btn active" data-mode="friendly">Web Form</button>
-    <button id="btn-raw" class="mode-btn" data-mode="raw">Raw TOML</button>
+    <button id="btn-raw"      class="mode-btn"        data-mode="raw">Raw TOML</button>
   </div>
   <div class="toolbar-actions">
-    <span id="save-note" class="save-note">Changes apply in-memory only — lost on daemon restart.</span>
+    <span class="save-note">Changes apply in-memory only — lost on daemon restart.</span>
     <button id="btn-apply" class="btn-primary">Apply</button>
   </div>
 </div>
 
 <div id="flash" class="flash" style="display:none"></div>
 
+{# ── Web Form ── #}
 <div id="editor-friendly" class="editor-pane">
-  <div id="friendly-form"></div>
+  {% if config %}
+    {% include "_form_fragment.html" %}
+  {% endif %}
 </div>
 
+{# ── Raw TOML ── #}
 <div id="editor-raw" class="editor-pane" style="display:none">
-  <textarea id="raw-textarea" spellcheck="false" placeholder="Loading config…"></textarea>
+  <textarea id="raw-textarea" spellcheck="false">{{ toml }}</textarea>
 </div>
+
+{# Embed schemas + pair counter for JS #}
+<script>
+  const SCHEMAS = {{ schemas_json | safe }};
+  let pairCounter = {{ (config.pairs | length) if config else 0 }};
+</script>
 {% endblock %}

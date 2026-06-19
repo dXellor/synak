@@ -7,9 +7,7 @@
   --border: #2e3347;
   --text: #d4d8f0;
   --text-dim: #7a80a0;
-  --accent: #5b8ef0;
-  --accent-hover: #7aaaf5;
-  --success: #3ec97a;
+  --accent: #3ec97a;
   --error: #e05c5c;
   --warning: #e0a84a;
   --radius: 6px;
@@ -54,7 +52,7 @@ header h1 {
   letter-spacing: 0.05em;
 }
 .badge-unknown  { background: var(--surface2); color: var(--text-dim); }
-.badge-running  { background: #1a3d2b; color: var(--success); }
+.badge-running  { background: #1a3d2b; color: var(--accent); }
 .badge-down     { background: #3d1a1a; color: var(--error); }
 
 /* ── Banner ── */
@@ -101,7 +99,7 @@ main {
   transition: background 0.15s, color 0.15s;
 }
 .mode-btn:hover { background: var(--surface2); color: var(--text); }
-.mode-btn.active { background: var(--accent); color: #fff; }
+.mode-btn.active { background: #1a3d2b; color: var(--accent); }
 
 .toolbar-actions {
   display: flex;
@@ -117,17 +115,17 @@ main {
 }
 
 .btn-primary {
-  background: var(--accent);
-  color: #fff;
-  border: none;
+  background: #1a3d2b;
+  color: var(--accent);
+  border: 1px solid #2a5a3e;
   padding: 7px 18px;
   border-radius: var(--radius);
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  transition: background 0.15s;
+  transition: background 0.15s, border-color 0.15s;
 }
-.btn-primary:hover { background: var(--accent-hover); }
+.btn-primary:hover { background: #1f4a33; border-color: var(--accent); }
 .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* ── Flash messages ── */
@@ -137,7 +135,7 @@ main {
   font-size: 13px;
   border: 1px solid transparent;
 }
-.flash-success { background: #1a3d2b; color: var(--success); border-color: #2a5a3e; }
+.flash-success { background: #1a3d2b; color: var(--accent); border-color: #2a5a3e; }
 .flash-error   { background: #3d1a1a; color: var(--error);   border-color: #5a2020; }
 
 /* ── Editor panes ── */
@@ -236,6 +234,15 @@ main {
 .radio-group label, .check-group label {
   display: flex; align-items: center; gap: 6px;
   font-size: 13px; cursor: pointer; color: var(--text);
+}
+.radio-group input[type="radio"],
+.check-group input[type="checkbox"],
+input[type="radio"],
+input[type="checkbox"] {
+  accent-color: var(--accent);
+  width: 15px;
+  height: 15px;
+  cursor: pointer;
 }
 
 /* Array (peers / exclude) rows */

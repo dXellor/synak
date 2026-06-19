@@ -1,373 +1,208 @@
-/* sync-web — vanilla JS, no framework */
+/* syncui — vanilla JS, dynamic behaviour only */
 
 // ── State ──────────────────────────────────────────────────────────────────
-let currentMode = "friendly";  // "friendly" | "raw"
-let currentConfig = null;      // last successfully loaded config dict
-let schemas = {};              // provider schemas from /api/schemas
+// SCHEMAS and pairCounter are injected by the template as globals.
+let currentMode = "friendly";
 
 // ── Init ───────────────────────────────────────────────────────────────────
 document.addEventListener("DOMContentLoaded", () => {
-  setupModeToggle();
-  setupApplyButton();
-  loadSchemas().then(loadConfig);
+  document.querySelectorAll(".mode-btn").forEach(btn =>
+    btn.addEventListener("click", () => switchMode(btn.dataset.mode))
+  );
+  document.getElementById("btn-apply")?.addEventListener("click", applyConfig);
+  document.getElementById("btn-add-pair")?.addEventListener("click", addPair);
+  document.getElementById("btn-add-peer")?.addEventListener("click", addStaticPeer);
 });
 
 // ── Mode toggle ────────────────────────────────────────────────────────────
-function setupModeToggle() {
-  document.querySelectorAll(".mode-btn").forEach(btn => {
-    btn.addEventListener("click", () => switchMode(btn.dataset.mode));
-  });
-}
-
 async function switchMode(mode) {
   if (mode === currentMode) return;
 
   if (currentMode === "friendly") {
-    // Snapshot form into currentConfig before leaving so raw gets the latest edits.
-    currentConfig = collectFriendly();
     try {
-      document.getElementById("raw-textarea").value = await configToToml(currentConfig);
+      const cfg = collectFriendly();
+      const { toml } = await apiPost("/api/convert", { json: cfg });
+      document.getElementById("raw-textarea").value = toml;
     } catch (e) {
       flash("error", `Cannot convert to TOML: ${e.message}`);
       return;
     }
-    activateMode(mode);
   } else {
-    // Leaving raw — try to parse textarea so form gets the latest edits.
     const toml = document.getElementById("raw-textarea").value.trim();
-    if (!toml) { activateMode(mode); return; }
-    try {
-      currentConfig = await parseToml(toml);
-      activateMode(mode);
-    } catch (e) {
-      flash("error", `Cannot switch: ${e.message}`);
+    if (toml) {
+      try {
+        const { json: cfg } = await apiPost("/api/convert", { toml });
+        reloadForm(cfg);
+      } catch (e) {
+        flash("error", `Cannot switch: ${e.message}`);
+        return;
+      }
     }
   }
-}
 
-function activateMode(mode) {
   currentMode = mode;
-  document.querySelectorAll(".mode-btn").forEach(btn => {
-    btn.classList.toggle("active", btn.dataset.mode === mode);
-  });
-  document.getElementById("editor-raw").style.display = mode === "raw" ? "" : "none";
+  document.querySelectorAll(".mode-btn").forEach(btn =>
+    btn.classList.toggle("active", btn.dataset.mode === mode)
+  );
   document.getElementById("editor-friendly").style.display = mode === "friendly" ? "" : "none";
-
-  if (mode === "friendly" && currentConfig) renderFriendly(currentConfig);
+  document.getElementById("editor-raw").style.display      = mode === "raw"      ? "" : "none";
 }
 
-// ── Load ───────────────────────────────────────────────────────────────────
-async function loadSchemas() {
-  try {
-    schemas = await apiGet("/api/schemas");
-  } catch (_) {
-    schemas = {};
-  }
-}
-
-async function loadConfig() {
-  let data;
-  try {
-    data = await apiGet("/api/config");
-  } catch (err) {
-    if (err.daemonDown) {
-      showDaemonDown(err.message);
-    } else {
-      flash("error", `Failed to load config: ${err.message}`);
-    }
-    return;
-  }
-
-  showDaemonUp();
-  currentConfig = data.json;
-  document.getElementById("raw-textarea").value = data.toml;
-  if (currentMode === "friendly") renderFriendly(currentConfig);
+// Reload the form pane by fetching fresh server-rendered HTML for the config.
+async function reloadForm(cfg) {
+  const resp = await fetch("/fragment/form", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(cfg),
+  });
+  if (!resp.ok) throw new Error(await resp.text());
+  document.getElementById("editor-friendly").innerHTML = await resp.text();
+  pairCounter = document.querySelectorAll(".pair-card").length;
+  bindDynamicPairs();
+  document.getElementById("btn-add-pair")?.addEventListener("click", addPair);
+  document.getElementById("btn-add-peer")?.addEventListener("click", addStaticPeer);
 }
 
 // ── Apply ──────────────────────────────────────────────────────────────────
-function setupApplyButton() {
-  document.getElementById("btn-apply").addEventListener("click", applyConfig);
-}
-
 async function applyConfig() {
   const btn = document.getElementById("btn-apply");
   btn.disabled = true;
-
-  let body;
-  if (currentMode === "raw") {
-    body = { toml: document.getElementById("raw-textarea").value };
-  } else {
-    body = { json: collectFriendly() };
-  }
-
   try {
+    let body;
+    if (currentMode === "raw") {
+      body = { toml: document.getElementById("raw-textarea").value };
+    } else {
+      body = { json: collectFriendly() };
+    }
     const data = await apiPost("/api/config", body);
-    currentConfig = data.json;
-    document.getElementById("raw-textarea").value = data.toml;
-    if (currentMode === "friendly") renderFriendly(currentConfig);
+    document.getElementById("raw-textarea").value = data.toml || "";
+    // Reload form with the canonicalized config the daemon returned
+    if (currentMode === "friendly") await reloadForm(data.json);
     flash("success", "Config applied.");
-  } catch (err) {
-    flash("error", err.message);
+  } catch (e) {
+    flash("error", e.message);
   } finally {
     btn.disabled = false;
   }
 }
 
-async function configToToml(cfg) {
-  const data = await apiPost("/api/convert", { json: cfg });
-  return data.toml;
+// ── Dynamic pairs ──────────────────────────────────────────────────────────
+function addPair() {
+  const wrap = document.getElementById("pairs-wrap");
+  wrap.insertAdjacentHTML("beforeend", renderPairCardHTML(pairCounter, defaultPair()));
+  bindPairCard(wrap.lastElementChild);
+  pairCounter++;
 }
 
-async function parseToml(toml) {
-  const data = await apiPost("/api/convert", { toml });
-  return data.json;
+function bindDynamicPairs() {
+  document.querySelectorAll(".pair-card").forEach(bindPairCard);
 }
 
-// ── Friendly form — render ─────────────────────────────────────────────────
-function renderFriendly(cfg) {
-  const root = document.getElementById("friendly-form");
-  root.innerHTML = "";
-
-  // Daemon section
-  root.appendChild(renderDaemonSection(cfg.daemon || {}));
-
-  // Pairs section
-  const pairsWrap = document.createElement("div");
-  pairsWrap.id = "pairs-wrap";
-  (cfg.pairs || []).forEach((pair, i) => pairsWrap.appendChild(renderPairCard(pair, i)));
-  root.appendChild(pairsWrap);
-
-  const addPairBtn = document.createElement("button");
-  addPairBtn.className = "btn-add-pair";
-  addPairBtn.textContent = "+ Add pair";
-  addPairBtn.addEventListener("click", () => {
-    const wrap = document.getElementById("pairs-wrap");
-    const idx = wrap.children.length;
-    wrap.appendChild(renderPairCard(defaultPair(), idx));
+function bindPairCard(card) {
+  card.querySelector(".btn-remove-pair")?.addEventListener("click", () => card.remove());
+  card.querySelectorAll('input[type="radio"][name$=".mode"]').forEach(radio => {
+    radio.addEventListener("change", (e) => onModeChange(e, card));
   });
-  root.appendChild(addPairBtn);
-
-  // Peers section
-  root.appendChild(renderPeersSection(cfg.peers || {}));
 }
 
-function renderDaemonSection(daemon) {
-  const card = sectionCard("Daemon");
-
-  // api_socket — read-only
-  card.appendChild(fieldRow("api_socket", false,
-    readonlyInput(daemon.api_socket || ""),
-    "Cannot change at runtime."
-  ));
-
-  // log_level — select
-  const levels = ["debug", "info", "warning", "error", "critical"];
-  card.appendChild(fieldRow("log_level", false,
-    selectField("daemon.log_level", levels, daemon.log_level || "info")
-  ));
-
-  return card;
-}
-
-function renderPairCard(pair, idx) {
-  const card = document.createElement("div");
-  card.className = "section-card pair-card";
-  card.dataset.pairIdx = idx;
-
-  const header = document.createElement("div");
-  header.className = "section-header";
-  header.innerHTML = `<span>Pair</span>`;
-  const removeBtn = document.createElement("button");
-  removeBtn.className = "btn-remove-pair";
-  removeBtn.title = "Remove pair";
-  removeBtn.textContent = "×";
-  removeBtn.addEventListener("click", () => card.remove());
-  header.appendChild(removeBtn);
-  card.appendChild(header);
-
-  const body = document.createElement("div");
-  body.className = "section-body";
-
-  const p = (k) => `pairs.${idx}.${k}`;
-
-  body.appendChild(fieldRow("id", true, textInput(p("id"), pair.id || "")));
-  body.appendChild(fieldRow("local", true, textInput(p("local"), pair.local || "")));
-  body.appendChild(fieldRow("direction", true,
-    radioGroup(p("direction"), ["push", "pull", "bidirectional"], pair.direction || "bidirectional")
-  ));
-  body.appendChild(fieldRow("mode", true,
-    radioGroup(p("mode"), ["client-server", "p2p"], pair.mode || "client-server",
-      () => refreshProviderSection(card, pair.mode || "client-server", pair.provider || {})
-    )
-  ));
-  body.appendChild(fieldRow("interval", false,
-    numberInput(p("interval"), pair.interval ?? 0, 0),
-    "Seconds between syncs. 0 = watch-based."
-  ));
-  body.appendChild(fieldRow("exclude", false,
-    arrayField(p("exclude"), pair.exclude || []),
-    "fnmatch patterns to skip."
-  ));
-
-  card.appendChild(body);
-
-  // Provider sub-section (appended to card, after body)
-  const provSection = document.createElement("div");
-  provSection.className = "provider-section";
-  card.appendChild(provSection);
-  refreshProviderSection(card, pair.mode || "client-server", pair.provider || {});
-
-  // Re-render provider when mode changes
-  card.querySelector(`[name="${p("mode")}"]`)?.closest(".radio-group")
-    ?.addEventListener("change", (e) => {
-      refreshProviderSection(card, e.target.value, {});
-    });
-
-  return card;
-}
-
-function refreshProviderSection(card, mode, providerCfg) {
-  const provSection = card.querySelector(".provider-section");
-  provSection.innerHTML = "";
-
-  const schema = schemas[mode];
-  if (!schema) return;
-
+// Called both from Jinja-rendered cards (inline onchange) and JS-created ones.
+function onModeChange(e, card) {
+  const mode = e.target.value;
   const idx = card.dataset.pairIdx;
-  const innerCard = sectionCard(`Provider (${mode})`);
-  const body = innerCard.querySelector(".section-body");
+  const provSection = card.querySelector(".provider-section");
+  provSection.innerHTML = renderProviderSectionHTML(idx, mode, {});
+}
 
-  Object.entries(schema.properties || {}).forEach(([key, def]) => {
-    const required = (schema.required || []).includes(key);
+function renderPairCardHTML(idx, pair) {
+  const modes = ["client-server", "p2p"];
+  const dirs  = ["push", "pull", "bidirectional"];
+  return `
+<div class="section-card pair-card" data-pair-idx="${idx}">
+  <div class="section-header">
+    <span>Pair</span>
+    <button type="button" class="btn-remove-pair">×</button>
+  </div>
+  <div class="section-body">
+    ${fieldRowHTML("id", true, `<input type="text" name="pairs.${idx}.id" value="${esc(pair.id)}">`)}
+    ${fieldRowHTML("local", true, `<input type="text" name="pairs.${idx}.local" value="${esc(pair.local)}">`)}
+    ${fieldRowHTML("direction", true, radioGroupHTML(`pairs.${idx}.direction`, dirs, pair.direction))}
+    ${fieldRowHTML("mode", true, `
+      <div class="radio-group" onchange="onModeChange(event, this.closest('.pair-card'))">
+        ${modes.map(m => `<label><input type="radio" name="pairs.${idx}.mode" value="${m}"${m === pair.mode ? " checked" : ""}> ${m}</label>`).join("")}
+      </div>`)}
+    ${fieldRowHTML("interval", false, `<input type="number" name="pairs.${idx}.interval" value="${pair.interval}" min="0" style="width:120px">`, "Seconds between syncs. 0 = watch-based.")}
+    ${fieldRowHTML("exclude", false, arrayFieldHTML(`pairs.${idx}.exclude`, pair.exclude))}
+  </div>
+  <div class="provider-section">
+    ${renderProviderSectionHTML(idx, pair.mode, pair.provider || {})}
+  </div>
+</div>`;
+}
+
+function renderProviderSectionHTML(idx, mode, provider) {
+  const schema = SCHEMAS[mode];
+  if (!schema) return "";
+  const required = schema.required || [];
+  const rows = Object.entries(schema.properties || {}).map(([key, def]) => {
     const name = `pairs.${idx}.provider.${key}`;
-    const val = providerCfg[key];
+    const cur  = provider[key];
     let widget;
-
     if (def.enum) {
-      widget = selectField(name, def.enum, val ?? def.enum[0]);
+      widget = selectHTML(name, def.enum, cur ?? def.enum[0]);
     } else if (def.type === "boolean") {
-      widget = checkboxField(name, val ?? true);
+      widget = `<label class="check-group"><input type="checkbox" name="${name}"${cur !== false ? " checked" : ""}> enabled</label>`;
     } else if (def.type === "integer" || def.type === "number") {
-      widget = numberInput(name, val ?? 0, def.type === "integer" ? 0 : undefined);
+      widget = `<input type="number" name="${name}" value="${cur ?? 0}" min="0" style="width:120px">`;
     } else if (def.type === "array") {
-      widget = arrayField(name, val || []);
+      widget = arrayFieldHTML(name, cur || []);
     } else {
-      widget = textInput(name, val ?? "");
+      widget = `<input type="text" name="${name}" value="${esc(cur ?? "")}">`;
     }
-
-    body.appendChild(fieldRow(key, required, widget, def.description));
-  });
-
-  provSection.appendChild(innerCard);
+    return fieldRowHTML(key, required.includes(key), widget, def.description);
+  }).join("");
+  return `<div class="section-card"><div class="section-header">Provider (${mode})</div><div class="section-body">${rows}</div></div>`;
 }
 
-function renderPeersSection(peers) {
-  const card = sectionCard("Peers");
-
-  card.appendChild(fieldRow("discovery", false,
-    selectField("peers.discovery", ["static"], peers.discovery || "static")
-  ));
-
-  const staticList = peers.static || [];
-  const staticWrap = document.createElement("div");
-  staticWrap.className = "section-body";
-  staticWrap.style.borderTop = "1px solid var(--border)";
-  staticWrap.id = "peers-static-wrap";
-
-  const staticHeader = document.createElement("div");
-  staticHeader.className = "section-header";
-  staticHeader.textContent = "Static peers";
-  card.querySelector(".section-card") || card;
-
-  // Append static header + rows directly inside the card's body
-  const cardBody = card.querySelector(".section-body");
-  const staticLabel = document.createElement("div");
-  staticLabel.className = "field-label";
-  staticLabel.style.gridColumn = "1 / -1";
-  staticLabel.style.fontWeight = "600";
-  staticLabel.style.paddingTop = "4px";
-  staticLabel.textContent = "static peers";
-  cardBody.appendChild(staticLabel);
-
-  staticList.forEach((peer, i) => cardBody.appendChild(renderStaticPeer(peer, i)));
-
-  const addBtn = document.createElement("button");
-  addBtn.className = "btn-add-row";
-  addBtn.textContent = "+ Add static peer";
-  addBtn.style.marginTop = "4px";
-  addBtn.addEventListener("click", () => {
-    const count = cardBody.querySelectorAll(".static-peer-row").length;
-    addBtn.before(renderStaticPeer({}, count));
-  });
-  cardBody.appendChild(addBtn);
-
-  return card;
+// ── Static peer rows ───────────────────────────────────────────────────────
+function addStaticPeer() {
+  const wrap = document.getElementById("static-peers-wrap");
+  const idx  = wrap.querySelectorAll(".static-peer-row").length;
+  wrap.insertAdjacentHTML("beforeend", `
+<div class="static-peer-row array-row">
+  <input type="text" name="peers.static.${idx}.id" placeholder="peer-id" style="flex:1">
+  <input type="text" name="peers.static.${idx}.address" placeholder="192.168.1.42:5000" style="flex:2">
+  <button type="button" class="btn-icon" onclick="this.closest('.static-peer-row').remove()">×</button>
+</div>`);
 }
 
-function renderStaticPeer(peer, idx) {
-  const row = document.createElement("div");
-  row.className = "static-peer-row array-row";
-  row.style.gridColumn = "1 / -1";
-
-  const idInput = document.createElement("input");
-  idInput.type = "text";
-  idInput.name = `peers.static.${idx}.id`;
-  idInput.value = peer.id || "";
-  idInput.placeholder = "peer-id";
-  idInput.style.flex = "1";
-
-  const addrInput = document.createElement("input");
-  addrInput.type = "text";
-  addrInput.name = `peers.static.${idx}.address`;
-  addrInput.value = peer.address || "";
-  addrInput.placeholder = "192.168.1.42:5000";
-  addrInput.style.flex = "2";
-
-  const removeBtn = document.createElement("button");
-  removeBtn.className = "btn-icon";
-  removeBtn.title = "Remove";
-  removeBtn.textContent = "×";
-  removeBtn.addEventListener("click", () => row.remove());
-
-  row.appendChild(idInput);
-  row.appendChild(addrInput);
-  row.appendChild(removeBtn);
-  return row;
-}
-
-function defaultPair() {
-  return { id: "", mode: "client-server", local: "", direction: "bidirectional", interval: 0, exclude: [], provider: {} };
-}
-
-// ── Friendly form — collect ────────────────────────────────────────────────
+// ── Collect form → config dict ─────────────────────────────────────────────
 function collectFriendly() {
-  const cfg = { daemon: {}, pairs: [], peers: { discovery: "static", static: [] } };
+  const cfg = {
+    daemon: {
+      api_socket: document.querySelector('[name="daemon.api_socket"]')?.value || "",
+      log_level:  val("daemon.log_level"),
+    },
+    pairs: [],
+    peers: { discovery: val("peers.discovery") || "static", static: [] },
+  };
 
-  // Daemon
-  cfg.daemon.api_socket = currentConfig?.daemon?.api_socket || "";
-  cfg.daemon.log_level = val("daemon.log_level");
-
-  // Pairs
-  document.querySelectorAll(".pair-card").forEach((card, idx) => {
-    const p = (k) => `pairs.${idx}.${k}`;
-    const mode = checkedRadio(p("mode")) || "client-server";
-    const pair = {
-      id: val(p("id")),
+  document.querySelectorAll(".pair-card").forEach(card => {
+    const idx  = card.dataset.pairIdx;
+    const p    = k => `pairs.${idx}.${k}`;
+    const mode = checkedRadio(p("mode"), card) || "client-server";
+    cfg.pairs.push({
+      id:        val(p("id"), card),
       mode,
-      local: val(p("local")),
-      direction: checkedRadio(p("direction")) || "bidirectional",
-      interval: intVal(p("interval")),
-      exclude: collectArray(p("exclude")),
-      provider: collectProvider(card, idx, mode),
-    };
-    cfg.pairs.push(pair);
+      local:     val(p("local"), card),
+      direction: checkedRadio(p("direction"), card) || "bidirectional",
+      interval:  intVal(p("interval"), card) ?? 0,
+      exclude:   collectArray(p("exclude"), card),
+      provider:  collectProvider(card, idx, mode),
+    });
   });
 
-  // Peers
-  cfg.peers.discovery = val("peers.discovery") || "static";
-  cfg.peers.static = [];
   document.querySelectorAll(".static-peer-row").forEach((row, i) => {
-    const id = row.querySelector(`[name="peers.static.${i}.id"]`)?.value.trim();
+    const id      = row.querySelector(`[name="peers.static.${i}.id"]`)?.value.trim();
     const address = row.querySelector(`[name="peers.static.${i}.address"]`)?.value.trim();
     if (id || address) cfg.peers.static.push({ id: id || "", address: address || "" });
   });
@@ -376,7 +211,7 @@ function collectFriendly() {
 }
 
 function collectProvider(card, idx, mode) {
-  const schema = schemas[mode];
+  const schema = SCHEMAS[mode];
   if (!schema) return {};
   const prov = {};
   Object.entries(schema.properties || {}).forEach(([key, def]) => {
@@ -388,184 +223,65 @@ function collectProvider(card, idx, mode) {
       const v = intVal(name, card);
       if (v !== null) prov[key] = v;
     } else if (def.type === "array") {
-      prov[key] = collectArray(name, card);
+      const arr = collectArray(name, card);
+      if (arr.length) prov[key] = arr;
     } else {
       const v = val(name, card);
-      if (v !== "") prov[key] = v;
+      if (v) prov[key] = v;
     }
   });
   return prov;
 }
 
-// ── Widget helpers ─────────────────────────────────────────────────────────
-function sectionCard(title) {
-  const card = document.createElement("div");
-  card.className = "section-card";
-  const header = document.createElement("div");
-  header.className = "section-header";
-  header.textContent = title;
-  card.appendChild(header);
-  const body = document.createElement("div");
-  body.className = "section-body";
-  card.appendChild(body);
-  return card;
+// ── HTML helpers (used only for JS-created elements) ──────────────────────
+function fieldRowHTML(label, required, widgetHTML, desc) {
+  return `
+<div class="field-row">
+  <div class="field-label${required ? " required" : ""}">${label}</div>
+  <div class="field-input">${widgetHTML}${desc ? `<div class="field-desc">${desc}</div>` : ""}</div>
+</div>`;
 }
 
-function fieldRow(label, required, widget, desc) {
-  const row = document.createElement("div");
-  row.className = "field-row";
-
-  const lbl = document.createElement("div");
-  lbl.className = "field-label" + (required ? " required" : "");
-  lbl.textContent = label;
-  row.appendChild(lbl);
-
-  const wrap = document.createElement("div");
-  wrap.className = "field-input";
-  wrap.appendChild(widget);
-  if (desc) {
-    const d = document.createElement("div");
-    d.className = "field-desc";
-    d.textContent = desc;
-    wrap.appendChild(d);
-  }
-  row.appendChild(wrap);
-  return row;
+function radioGroupHTML(name, options, selected) {
+  return `<div class="radio-group">` +
+    options.map(o => `<label><input type="radio" name="${name}" value="${o}"${o === selected ? " checked" : ""}> ${o}</label>`).join("") +
+    `</div>`;
 }
 
-function textInput(name, value) {
-  const el = document.createElement("input");
-  el.type = "text";
-  el.name = name;
-  el.value = value;
-  return el;
+function selectHTML(name, options, selected) {
+  return `<select name="${name}">` +
+    options.map(o => `<option value="${o}"${o === selected ? " selected" : ""}>${o}</option>`).join("") +
+    `</select>`;
 }
 
-function readonlyInput(value) {
-  const el = textInput("", value);
-  el.readOnly = true;
-  return el;
+function arrayFieldHTML(name, values) {
+  const rows = values.map(v =>
+    `<div class="array-row"><input type="text" name="${name}[]" value="${esc(v)}"><button type="button" class="btn-icon" onclick="this.closest('.array-row').remove()">×</button></div>`
+  ).join("");
+  return `<div class="array-field">${rows}<button type="button" class="btn-add-row" onclick="addArrayRow(this,'${name}')">+ Add</button></div>`;
 }
 
-function numberInput(name, value, min) {
-  const el = document.createElement("input");
-  el.type = "number";
-  el.name = name;
-  el.value = value ?? "";
-  if (min !== undefined) el.min = min;
-  el.style.width = "120px";
-  return el;
+function addArrayRow(btn, name) {
+  btn.insertAdjacentHTML("beforebegin",
+    `<div class="array-row"><input type="text" name="${name}[]" value=""><button type="button" class="btn-icon" onclick="this.closest('.array-row').remove()">×</button></div>`
+  );
 }
 
-function selectField(name, options, selected) {
-  const el = document.createElement("select");
-  el.name = name;
-  options.forEach(opt => {
-    const o = document.createElement("option");
-    o.value = opt;
-    o.textContent = opt;
-    if (opt === selected) o.selected = true;
-    el.appendChild(o);
-  });
-  return el;
+function defaultPair() {
+  return { id: "", mode: "client-server", local: "", direction: "bidirectional", interval: 0, exclude: [], provider: {} };
 }
 
-function radioGroup(name, options, selected, onChange) {
-  const wrap = document.createElement("div");
-  wrap.className = "radio-group";
-  options.forEach(opt => {
-    const lbl = document.createElement("label");
-    const input = document.createElement("input");
-    input.type = "radio";
-    input.name = name;
-    input.value = opt;
-    if (opt === selected) input.checked = true;
-    if (onChange) input.addEventListener("change", () => onChange(opt));
-    lbl.appendChild(input);
-    lbl.appendChild(document.createTextNode(opt));
-    wrap.appendChild(lbl);
-  });
-  return wrap;
-}
-
-function checkboxField(name, checked) {
-  const lbl = document.createElement("label");
-  lbl.className = "check-group";
-  const el = document.createElement("input");
-  el.type = "checkbox";
-  el.name = name;
-  el.checked = !!checked;
-  lbl.appendChild(el);
-  lbl.appendChild(document.createTextNode("enabled"));
-  return lbl;
-}
-
-function arrayField(name, values) {
-  const wrap = document.createElement("div");
-  wrap.className = "array-field";
-  wrap.dataset.arrayName = name;
-
-  values.forEach(v => wrap.appendChild(arrayRow(name, v)));
-
-  const addBtn = document.createElement("button");
-  addBtn.className = "btn-add-row";
-  addBtn.textContent = "+ Add";
-  addBtn.addEventListener("click", () => addBtn.before(arrayRow(name, "")));
-  wrap.appendChild(addBtn);
-  return wrap;
-}
-
-function arrayRow(name, value) {
-  const row = document.createElement("div");
-  row.className = "array-row";
-  const input = document.createElement("input");
-  input.type = "text";
-  input.name = name + "[]";
-  input.value = value;
-  const btn = document.createElement("button");
-  btn.className = "btn-icon";
-  btn.textContent = "×";
-  btn.title = "Remove";
-  btn.addEventListener("click", () => row.remove());
-  row.appendChild(input);
-  row.appendChild(btn);
-  return row;
+function esc(s) {
+  return String(s ?? "").replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;");
 }
 
 // ── Form value helpers ─────────────────────────────────────────────────────
-function val(name, root = document) {
-  return root.querySelector(`[name="${name}"]`)?.value.trim() ?? "";
-}
-
-function checkedRadio(name, root = document) {
-  return root.querySelector(`[name="${name}"]:checked`)?.value ?? null;
-}
-
-function intVal(name, root = document) {
-  const v = root.querySelector(`[name="${name}"]`)?.value;
-  if (v === "" || v === undefined || v === null) return null;
-  const n = parseInt(v, 10);
-  return isNaN(n) ? null : n;
-}
-
-function collectArray(name, root = document) {
-  return Array.from(root.querySelectorAll(`[name="${name}[]"]`))
-    .map(el => el.value.trim())
-    .filter(Boolean);
-}
+function val(name, root = document)         { return root.querySelector(`[name="${name}"]`)?.value.trim() ?? ""; }
+function checkedRadio(name, root = document){ return root.querySelector(`[name="${name}"]:checked`)?.value ?? null; }
+function intVal(name, root = document)      { const v = root.querySelector(`[name="${name}"]`)?.value; return (v === "" || v == null) ? null : (parseInt(v,10) || null); }
+function collectArray(name, root = document){ return Array.from(root.querySelectorAll(`[name="${name}[]"]`)).map(e => e.value.trim()).filter(Boolean); }
 
 // ── API helpers ────────────────────────────────────────────────────────────
-async function apiGet(path) {
-  const resp = await fetch(path);
-  const data = await resp.json();
-  if (!resp.ok) {
-    const err = new Error(data.error || `HTTP ${resp.status}`);
-    err.daemonDown = !!data.daemon_down;
-    throw err;
-  }
-  return data;
-}
-
 async function apiPost(path, body) {
   const resp = await fetch(path, {
     method: "POST",
@@ -581,30 +297,12 @@ async function apiPost(path, body) {
   return data;
 }
 
-// ── Status / banner helpers ────────────────────────────────────────────────
-function showDaemonUp() {
-  const badge = document.getElementById("daemon-badge");
-  badge.className = "badge badge-running";
-  badge.textContent = "running";
-  document.getElementById("daemon-banner").style.display = "none";
-}
-
-function showDaemonDown(message) {
-  const badge = document.getElementById("daemon-badge");
-  badge.className = "badge badge-down";
-  badge.textContent = "down";
-  const banner = document.getElementById("daemon-banner");
-  banner.textContent = message;
-  banner.style.display = "";
-}
-
+// ── Flash ──────────────────────────────────────────────────────────────────
 function flash(type, message) {
   const el = document.getElementById("flash");
   el.className = `flash flash-${type}`;
   el.textContent = message;
   el.style.display = "";
   clearTimeout(el._timer);
-  if (type === "success") {
-    el._timer = setTimeout(() => { el.style.display = "none"; }, 4000);
-  }
+  if (type === "success") el._timer = setTimeout(() => { el.style.display = "none"; }, 4000);
 }

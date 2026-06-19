@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from flask import Flask, current_app, jsonify, request
+import json as _json
+
+from flask import Flask, current_app, jsonify, render_template, request
 
 from syncui.daemon_client import DaemonClient, DaemonNotRunningError, DaemonError
 from syncui.tomlio import dict_to_toml, toml_to_dict
@@ -43,6 +45,7 @@ def _client() -> DaemonClient:
 
 def register(app: Flask) -> None:
     app.add_url_rule("/", view_func=index)
+    app.add_url_rule("/fragment/form", view_func=fragment_form, methods=["POST"])
     app.add_url_rule("/api/config", view_func=api_config_get, methods=["GET"])
     app.add_url_rule("/api/config", view_func=api_config_post, methods=["POST"])
     app.add_url_rule("/api/convert", view_func=api_convert, methods=["POST"])
@@ -51,8 +54,42 @@ def register(app: Flask) -> None:
 
 
 def index():
-    from flask import render_template
-    return render_template("index.html")
+    config = None
+    toml_str = ""
+    daemon_down = False
+    daemon_error = None
+
+    try:
+        config = _client().get("/config")
+        toml_str = dict_to_toml(config)
+    except DaemonNotRunningError as e:
+        daemon_down = True
+        daemon_error = str(e)
+    except DaemonError as e:
+        daemon_error = str(e)
+
+    return render_template(
+        "index.html",
+        config=config,
+        toml=toml_str,
+        schemas=_PROVIDER_SCHEMAS,
+        schemas_json=_json.dumps(_PROVIDER_SCHEMAS),
+        daemon_down=daemon_down,
+        daemon_error=daemon_error,
+    )
+
+
+def fragment_form():
+    """Return just the form pane HTML for a config dict POSTed as JSON."""
+    try:
+        config = request.get_json(silent=True) or {}
+    except Exception:
+        return "bad request", 400
+    return render_template(
+        "_form_fragment.html",
+        config=config,
+        schemas=_PROVIDER_SCHEMAS,
+    )
 
 
 def api_config_get():

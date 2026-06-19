@@ -9,10 +9,12 @@
 <body>
   <header>
     <h1>syncd</h1>
+    {% block daemon_badge %}
     <span id="daemon-badge" class="badge badge-unknown">checking…</span>
+    {% endblock %}
   </header>
 
-  <div id="daemon-banner" class="banner banner-error" style="display:none"></div>
+  {% block daemon_banner %}{% endblock %}
 
   <main>{% block content %}{% endblock %}</main>
 
