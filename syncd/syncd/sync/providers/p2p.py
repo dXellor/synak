@@ -159,6 +159,7 @@ class P2PProvider(BaseSyncProvider):
     async def _sync_with_peer(self, peer_addr: str) -> None:
         assert self._index is not None and self._context is not None
         host, port = _parse_peer(peer_addr, self._port)
+        logger.info("Starting sync with peer %s", peer_addr)
         reader, writer = await asyncio.open_connection(host, port, limit=proto.READER_LIMIT)
         try:
             await proto.send_message(writer, proto.hello_msg(self._node_id, self._index.all_entries_dict()))
@@ -213,13 +214,16 @@ class P2PProvider(BaseSyncProvider):
                         or reconcile(remote_entry, local_entry, self._node_id) == Action.ACCEPT_REMOTE):
                     if path in renames:
                         await proto.send_message(writer, proto.rename_msg(renames[path], path, local_entry.to_dict()))
+                        logger.info("Sent rename %r → %r to %s", renames[path], path, peer_addr)
                     else:
                         abs_path = os.path.join(self._context.local, path)
                         if os.path.exists(abs_path):
                             await proto.send_file_data(writer, path, abs_path, local_entry.to_dict())
+                            logger.info("Pushed %r to %s", path, peer_addr)
 
             await proto.send_message(writer, proto.ack_msg(self._node_id))
             await asyncio.to_thread(self._index.save)
+            logger.info("Sync with peer %s complete", peer_addr)
         finally:
             await _close_writer(writer)
 
@@ -230,6 +234,7 @@ class P2PProvider(BaseSyncProvider):
     ) -> None:
         assert self._index is not None and self._context is not None
         peer = writer.get_extra_info("peername")
+        logger.info("Peer connected: %s", peer)
         try:
             msg = await proto.read_message(reader)
             if not msg or msg["type"] != "HELLO":
