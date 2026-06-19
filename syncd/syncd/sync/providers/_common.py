@@ -101,16 +101,23 @@ class BaseSyncProvider(SyncProvider):
 
     def _compute_needed(self, remote_index: dict[str, FileEntry]) -> list[str]:
         assert self._index is not None
+        local_live_by_checksum = {
+            e.checksum: p
+            for p, e in self._index.all_entries().items()
+            if not e.deleted and e.checksum
+        }
         needed = []
         for path, remote_entry in remote_index.items():
             if remote_entry.deleted:
                 continue
             local_entry = self._index.get(path)
-            if local_entry is None:
-                needed.append(path)
-                continue
-            if local_entry.deleted:
-                if reconcile(local_entry, remote_entry, self._node_id) == Action.ACCEPT_REMOTE:
+            if local_entry is None or local_entry.deleted:
+                existing = local_live_by_checksum.get(remote_entry.checksum)
+                if existing and existing != path:
+                    continue  # we have this content under a different name — it's a rename
+                if local_entry is None:
+                    needed.append(path)
+                elif reconcile(local_entry, remote_entry, self._node_id) == Action.ACCEPT_REMOTE:
                     needed.append(path)
                 continue
             action = reconcile(local_entry, remote_entry, self._node_id)
